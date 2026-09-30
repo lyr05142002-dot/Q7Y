@@ -2,6 +2,17 @@
 
 给 **GL.iNet GL-MT3600BE（Beryl 7）** 这类小内存 OpenWrt 路由器用的轻量透明代理，思路来自 [Open-Box](https://github.com/liandu2024/Open-Box) 和[这期视频](https://youtu.be/G_7AmjfSRQ8)：装好后在浏览器里切换节点、看连接和流量，分流规则直接用视频作者的[域名集](https://github.com/liandu2024/clash/tree/main/list)。
 
+## 下载
+
+到 [Releases 页面](https://github.com/lyr05142002-dot/Q7Y/releases/latest) 下载，或直接点：
+
+| 文件 | 说明 |
+|---|---|
+| [**litebox-arm64-offline.zip**](https://github.com/lyr05142002-dot/Q7Y/releases/latest/download/litebox-arm64-offline.zip) | **推荐**。已带 mihomo 内核和面板（约 23MB），路由器连不上 GitHub 也能装。适用于 GL-MT3600BE 等 aarch64 路由器 |
+| [litebox.zip](https://github.com/lyr05142002-dot/Q7Y/releases/latest/download/litebox.zip) | 只有脚本（几十 KB），安装时再联网下载内核和面板，支持 aarch64 / armv7 / x86_64 |
+
+或者在路由器上用**一条命令**安装（需要路由器能访问 GitHub，见[方式二](#方式二路由器上一条命令安装)）。
+
 ## 为什么不直接装 Open-Box
 
 | | GL-MT3600BE 实际情况 | Open-Box 要求 |
@@ -42,36 +53,36 @@ Open-Box 的面板是闭源的 Node.js 程序，无法修改，所以这里换�
 3. 确认能用 SSH 登录路由器：用户名 `root`，密码和管理界面相同
 4. 第一次安装时，最好用网线连着路由器，出问题时方便恢复
 
-### 第 1 步：在电脑上下载仓库
+### 第 1 步：在电脑上下载安装包
 
-仓库是私有的，路由器没法直接下载，需要经电脑中转。在 GitHub 仓库页点 **Code → Download ZIP**，然后解压：
+打开 [Releases 页面](https://github.com/lyr05142002-dot/Q7Y/releases/latest)，下载 **litebox-arm64-offline.zip**，然后解压：
 
-![下载仓库](docs/img/02-download.png)
+![下载安装包](docs/img/02-download.png)
 
 ### 第 2 步：把文件夹传到路由器
 
-用 [HexHub](https://www.hexhub.cn/) 连上路由器，在 SFTP 页面把整个 `Q7Y-main` 文件夹拖到路由器的 `/tmp/` 目录：
+用 [HexHub](https://www.hexhub.cn/) 连上路由器，在 SFTP 页面把整个 `litebox` 文件夹拖到路由器的 `/tmp/` 目录：
 
 ![用 HexHub 上传](docs/img/03-upload.png)
 
 没有 HexHub 的话，在解压目录里打开终端执行：
 
 ```bash
-scp -O -r Q7Y-main root@192.168.8.1:/tmp/
+scp -O -r litebox root@192.168.8.1:/tmp/
 ```
 
 ### 第 3 步：SSH 登录路由器，运行安装脚本
 
 ```bash
-sh /tmp/Q7Y-main/install.sh --sub '你的机场订阅地址'
+sh /tmp/litebox/install.sh --sub '你的机场订阅地址'
 ```
 
 ![运行安装脚本](docs/img/04-install.png)
 
 - 订阅支持 Clash / mihomo 格式，也支持 base64 节点链接
 - 不加 `--sub` 也能装，安装时会询问；直接回车跳过的话，装好后不会启动，**网络不受影响**，之后执行 `litebox sub '订阅地址'` 就会启动
-- 路由器访问 GitHub 慢时，脚本会自动依次尝试 `ghfast.top`、`gh-proxy.com` 镜像；因为校验值写死在脚本里，镜像站换不了文件内容。也可以用 `--mirror https://你的镜像` 指定
-- 路由器完全连不上 GitHub 时：在电脑上下载 [mihomo-linux-arm64-v1.19.31.gz](https://github.com/MetaCubeX/mihomo/releases/download/v1.19.31/mihomo-linux-arm64-v1.19.31.gz) 和 [dist-no-fonts.zip](https://github.com/Zephyruso/zashboard/releases/download/v3.29.1/dist-no-fonts.zip)，放进 `Q7Y-main` 文件夹一起上传，脚本会优先用本地文件（同样校验）
+- 离线包里的内核和面板会优先使用，同样校验 SHA256；分流规则仍需联网下载，下载失败时内核启动后会经代理重试
+- 用只有脚本的 `litebox.zip` 时，路由器访问 GitHub 慢，脚本会自动依次尝试 `ghfast.top`、`gh-proxy.com` 镜像；因为校验值写死在脚本里，镜像站换不了文件内容。也可以用 `--mirror https://你的镜像` 指定
 - 面板端口默认 9090，被占用时加 `--port 9091`
 
 ### 第 4 步：打开网页面板
@@ -93,6 +104,22 @@ sh /tmp/Q7Y-main/install.sh --sub '你的机场订阅地址'
 ```bash
 litebox status; litebox check; logread | grep -i -E 'mihomo|litebox' | tail -n 50
 ```
+
+### 方式二：路由器上一条命令安装
+
+路由器能访问 GitHub 时，不用经过电脑，SSH 登录后执行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lyr05142002-dot/Q7Y/main/get.sh | sh -s -- --sub '你的机场订阅地址'
+```
+
+访问 GitHub 不畅时，经镜像下载：
+
+```bash
+curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/lyr05142002-dot/Q7Y/main/get.sh | sh -s -- --mirror https://ghfast.top --sub '你的机场订阅地址'
+```
+
+它会下载最新版的 `litebox.tar.gz`，校验 SHA256（校验值优先直接从 GitHub 取），然后运行同一个 `install.sh`，参数原样传过去。装好后从第 4 步继续。
 
 ## 分组和分流
 
@@ -120,7 +147,7 @@ litebox status; litebox check; logread | grep -i -E 'mihomo|litebox' | tail -n 5
 | `litebox direct` | **上不了网时用**：立即恢复直连并关闭开机自启 |
 | `litebox uninstall` | 卸载（`--purge` 连配置和订阅一起删） |
 
-升级：上传新版仓库后重新执行 `sh install.sh` 即可，配置、订阅、面板密钥都会保留。
+升级：下载新版安装包，按第 2、3 步重新执行 `install.sh`（或再跑一次方式二的命令），配置、订阅、面板密钥都会保留。
 
 ## 工作原理
 
@@ -138,4 +165,11 @@ litebox status; litebox check; logread | grep -i -E 'mihomo|litebox' | tail -n 5
 
 ## 许可证
 
-本仓库的脚本和配置模板由本仓库作者编写。mihomo（GPL-3.0）和 zashboard 在安装时从各自的官方 Release 下载，不包含在本仓库里，遵循它们各自的许可证。分流规则来自 liandu2024/clash 和 MetaCubeX/meta-rules-dat。
+本仓库的脚本和配置模板由本仓库作者编写。
+
+离线包里附带的第三方程序原样取自官方 Release，并附上各自的许可证原文（在 `licenses/` 目录）：
+
+- [mihomo](https://github.com/MetaCubeX/mihomo) v1.19.31：GPL-3.0。对应源码见 [官方 v1.19.31 标签](https://github.com/MetaCubeX/mihomo/tree/v1.19.31)，本仓库的 Release 里也附了一份源码包
+- [zashboard](https://github.com/Zephyruso/zashboard) v3.29.1：MIT
+
+分流规则在安装时从 [liandu2024/clash](https://github.com/liandu2024/clash) 和 [MetaCubeX/meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) 下载，不包含在安装包里。

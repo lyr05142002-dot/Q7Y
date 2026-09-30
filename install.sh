@@ -316,11 +316,11 @@ else
 	/etc/init.d/litebox restart
 	info "安装完成，已启动。"
 fi
+LAN_IP=${LAN_IP:-192.168.8.1}
 cat <<EOF
 
-  面板地址：http://${LAN_IP:-路由器IP}:$PANEL_PORT/ui
-  面板密钥：$SECRET
-  （面板里「后端地址」填 http://${LAN_IP:-路由器IP}:$PANEL_PORT ，密钥填上面这串）
+  一键登录：http://$LAN_IP:$PANEL_PORT/ui/#/setup?hostname=$LAN_IP&port=$PANEL_PORT&secret=$SECRET
+  （复制到浏览器打开即可。手动登录时：主机 $LAN_IP，端口 $PANEL_PORT，密码 $SECRET）
 
-  常用命令：litebox status | litebox mem | litebox sub <地址> | litebox stop | litebox uninstall
+  常用命令：litebox status | litebox mem | litebox sub <地址> | litebox panel | litebox direct
 EOF

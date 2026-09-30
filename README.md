@@ -29,30 +29,44 @@ Open-Box 的面板是闭源的 Node.js 程序，无法修改，所以这里换�
 
 两个上限都在 `/etc/litebox/litebox.conf` 里改（`MEM_SOFT_MB`、`MEM_HARD_MB`），改完 `litebox restart`。
 
-## 安装
+## 图文安装教程
 
-**准备**：在 GL 管理界面（默认 http://192.168.8.1）里：
+![安装流程总览](docs/img/01-flow.png)
+
+### 准备
+
+在 GL 管理界面（默认 http://192.168.8.1）里：
 
 1. 关闭 GL 自带的 VPN 客户端、AdGuard Home，以及其他代理插件（OpenClash、Passwall 等），否则会和 LiteBox 抢流量和 DNS
 2. 「网络 → DNS」保持自动，不要设成手动 / 加密 DNS
 3. 确认能用 SSH 登录路由器：用户名 `root`，密码和管理界面相同
+4. 第一次安装时，最好用网线连着路由器，出问题时方便恢复
 
-**第 1 步：把仓库传到路由器**
+### 第 1 步：在电脑上下载仓库
 
-仓库是私有的，路由器没法直接下载，需要经电脑中转：
+仓库是私有的，路由器没法直接下载，需要经电脑中转。在 GitHub 仓库页点 **Code → Download ZIP**，然后解压：
 
-1. 在 GitHub 仓库页点 **Code → Download ZIP**，解压得到 `Q7Y-main` 文件夹
-2. 用 [HexHub](https://www.hexhub.cn/) 的 SFTP 把整个 `Q7Y-main` 文件夹上传到路由器的 `/tmp/`，也可以在电脑的终端里执行：
+![下载仓库](docs/img/02-download.png)
+
+### 第 2 步：把文件夹传到路由器
+
+用 [HexHub](https://www.hexhub.cn/) 连上路由器，在 SFTP 页面把整个 `Q7Y-main` 文件夹拖到路由器的 `/tmp/` 目录：
+
+![用 HexHub 上传](docs/img/03-upload.png)
+
+没有 HexHub 的话，在解压目录里打开终端执行：
 
 ```bash
 scp -O -r Q7Y-main root@192.168.8.1:/tmp/
 ```
 
-**第 2 步：SSH 登录路由器执行安装**
+### 第 3 步：SSH 登录路由器，运行安装脚本
 
 ```bash
 sh /tmp/Q7Y-main/install.sh --sub '你的机场订阅地址'
 ```
+
+![运行安装脚本](docs/img/04-install.png)
 
 - 订阅支持 Clash / mihomo 格式，也支持 base64 节点链接
 - 不加 `--sub` 也能装，安装时会询问；直接回车跳过的话，装好后不会启动，**网络不受影响**，之后执行 `litebox sub '订阅地址'` 就会启动
@@ -60,9 +74,25 @@ sh /tmp/Q7Y-main/install.sh --sub '你的机场订阅地址'
 - 路由器完全连不上 GitHub 时：在电脑上下载 [mihomo-linux-arm64-v1.19.31.gz](https://github.com/MetaCubeX/mihomo/releases/download/v1.19.31/mihomo-linux-arm64-v1.19.31.gz) 和 [dist-no-fonts.zip](https://github.com/Zephyruso/zashboard/releases/download/v3.29.1/dist-no-fonts.zip)，放进 `Q7Y-main` 文件夹一起上传，脚本会优先用本地文件（同样校验）
 - 面板端口默认 9090，被占用时加 `--port 9091`
 
-**第 3 步：打开面板**
+### 第 4 步：打开网页面板
 
-安装结束时会打印面板地址和密钥，例如 `http://192.168.8.1:9090/ui`。第一次打开时「后端地址」填 `http://192.168.8.1:9090`，密钥填打印出来的那串。忘了就执行 `litebox panel`。
+最省事的办法是复制安装结束时显示的**一键登录链接**，在手机或电脑浏览器里打开，会自动填好并进入面板。链接找不到了，就在路由器上运行 `litebox panel`。也可以按下图手动填写：
+
+![打开面板](docs/img/05-panel.png)
+
+进入面板后，在「代理」页切换节点：
+
+![面板里的四个分组](docs/img/06-groups.png)
+
+### 第 5 步：检查是否正常工作
+
+![检查](docs/img/07-check.png)
+
+上面几项都正常，就说明装好了。**上不了网时**，先执行 `litebox direct` 恢复直连，再运行下面这条命令，把输出发出来求助：
+
+```bash
+litebox status; litebox check; logread | grep -i -E 'mihomo|litebox' | tail -n 50
+```
 
 ## 分组和分流
 
@@ -84,6 +114,7 @@ sh /tmp/Q7Y-main/install.sh --sub '你的机场订阅地址'
 | `litebox status` | 运行状态、当前 / 峰值内存、面板地址 |
 | `litebox mem` | 详细内存信息 |
 | `litebox sub '地址'` | 更换订阅（不带地址 = 查看当前订阅） |
+| `litebox panel` | 显示面板的一键登录链接和密码 |
 | `litebox restart` / `stop` / `start` | 重启 / 停止 / 启动 |
 | `litebox log` | 最近的内核日志 |
 | `litebox direct` | **上不了网时用**：立即恢复直连并关闭开机自启 |

@@ -46,9 +46,10 @@ lan_ip() {
 }
 
 show_panel() {
-	echo "面板地址：http://$(lan_ip):$PANEL_PORT/ui"
-	echo "后端地址：http://$(lan_ip):$PANEL_PORT"
-	echo "面板密钥：$SECRET"
+	local ip
+	ip=$(lan_ip)
+	echo "一键登录：http://$ip:$PANEL_PORT/ui/#/setup?hostname=$ip&port=$PANEL_PORT&secret=$SECRET"
+	echo "手动登录：主机 $ip，端口 $PANEL_PORT，密码 $SECRET"
 }
 
 check_config() {

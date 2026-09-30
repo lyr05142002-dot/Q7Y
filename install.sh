@@ -1,0 +1,326 @@
+#!/bin/sh
+# LiteBox 安装 / 升级脚本
+#
+# 在 OpenWrt（含 GL.iNet 官方固件，如 GL-MT3600BE / Beryl 7）上安装：
+#   mihomo 内核（透明代理 + 分流）+ zashboard 网页面板 + 视频作者的域名集规则
+# 目标是整套常驻内存控制在 200MB 以内（内核软上限 100MB，超过 180MB 由看门狗重启）。
+#
+# 用法（先把整个仓库目录上传到路由器，例如 /tmp/Q7Y）：
+#   sh /tmp/Q7Y/install.sh [--sub 订阅地址] [--port 面板端口] [--mirror 镜像前缀]
+#
+# 下载的 mihomo 与面板都锁定版本并校验 SHA256（校验值写死在本脚本里），
+# 所以经过镜像站下载也不会被替换内容。重复执行即为升级，已有配置和订阅会保留。
+
+set -u
+
+MIHOMO_VER=v1.19.31
+MIHOMO_SHA_arm64=9e0f11afbf38426b8bd88fdc594678f8161c57eccb4e1b77acb12b493904f1d4
+MIHOMO_SHA_armv7=a61115819d9ebd568788b0f1bddfa6c9c03458071abdbda80f79291cac0276e1
+MIHOMO_SHA_amd64=d5e74bbddbdfff49a1aef7775bf5911da59f0d7196ed509a0ac914b3653dd5f1
+UI_VER=v3.29.1
+UI_ASSET=dist-no-fonts.zip
+UI_SHA=21371cd111b6b3d87774f3ea3ddeacdcb0f6aff8690a16d652daa3ea6e3b0145
+
+BIN_DIR=/usr/lib/litebox
+HOME_DIR=/etc/litebox
+CONF=$HOME_DIR/litebox.conf
+CONFIG=$HOME_DIR/config.yaml
+MIN_FREE_KB=81920
+SUB_PLACEHOLDER=https://sub.invalid/litebox-placeholder
+BUILTIN_MIRRORS="https://ghfast.top https://gh-proxy.com"
+LB_LIST=https://raw.githubusercontent.com/liandu2024/clash/main/list
+META_GEO=https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+TMP=""
+
+info() { echo "[litebox] $*"; }
+warn() { echo "[litebox] 警告：$*" >&2; }
+die() { echo "[litebox] 错误：$*" >&2; [ -n "$TMP" ] && rm -rf "$TMP"; exit 1; }
+
+usage() {
+	cat <<EOF
+用法：sh install.sh [选项]
+  --sub URL       机场订阅地址（Clash/mihomo 订阅或 base64 节点链接）
+  --port N        面板端口（默认 9090）
+  --mirror URL    GitHub 下载镜像前缀，例如 https://ghfast.top（默认先直连，失败再试内置镜像）
+  -h, --help      显示本帮助
+EOF
+}
+
+SUB_URL=""
+PANEL_PORT=""
+USER_MIRROR=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--sub|--port|--mirror)
+			[ $# -ge 2 ] || die "$1 后面缺少参数"
+			case "$1" in
+				--sub) SUB_URL=$2 ;;
+				--port) PANEL_PORT=$2 ;;
+				--mirror) USER_MIRROR=${2%/} ;;
+			esac
+			shift 2 ;;
+		-h|--help) usage; exit 0 ;;
+		*) usage; die "未知参数：$1" ;;
+	esac
+done
+
+# ---------- 环境检查 ----------
+
+[ "$(id -u)" = 0 ] || die "请以 root 身份运行。"
+[ -f /etc/openwrt_release ] && [ -f /etc/rc.common ] || die "只支持 OpenWrt 系统（包括 GL.iNet 官方固件）。"
+[ -f "$SCRIPT_DIR/files/config.yaml.tpl" ] || die "找不到 $SCRIPT_DIR/files/，请把整个仓库目录上传后再运行。"
+
+case "$(uname -m)" in
+	aarch64|arm64) ARCH=arm64 ;;
+	armv7*) ARCH=armv7 ;;
+	x86_64) ARCH=amd64 ;;
+	*) die "不支持的 CPU 架构：$(uname -m)" ;;
+esac
+eval "MIHOMO_SHA=\$MIHOMO_SHA_$ARCH"
+
+. /etc/openwrt_release
+MEM_MB=$(awk '/^MemTotal:/ { printf "%d", $2 / 1024 }' /proc/meminfo)
+info "系统：${DISTRIB_DESCRIPTION:-OpenWrt}，架构 $(uname -m)（$ARCH），内存 ${MEM_MB}MB"
+[ "$MEM_MB" -ge 200 ] || warn "内存不到 200MB，运行可能不稳定。"
+
+overlay=/overlay
+[ -d "$overlay" ] || overlay=/
+free_kb=$(df -Pk "$overlay" | awk 'END { print $4 }')
+[ "${free_kb:-0}" -ge "$MIN_FREE_KB" ] || die "存储空间不足：$overlay 只剩 $((${free_kb:-0} / 1024))MB，至少需要 $((MIN_FREE_KB / 1024))MB。"
+
+if command -v curl >/dev/null 2>&1; then DL=curl
+elif command -v wget >/dev/null 2>&1; then DL=wget
+else die "系统没有 curl 或 wget。"
+fi
+command -v sha256sum >/dev/null 2>&1 || die "系统没有 sha256sum，无法校验下载文件。"
+
+if [ ! -c /dev/net/tun ]; then
+	info "缺少 TUN 设备，尝试安装 kmod-tun ..."
+	{ opkg update && opkg install kmod-tun; } >/dev/null 2>&1
+	[ -c /dev/net/tun ] || die "kmod-tun 安装失败。请在 GL 管理界面「系统 → 插件」里安装 kmod-tun 后重试。"
+fi
+
+for svc in openclash nikki mihomo passwall passwall2 shadowsocksr sing-box openbox homeproxy; do
+	if [ -x "/etc/init.d/$svc" ] && "/etc/init.d/$svc" running >/dev/null 2>&1; then
+		warn "检测到 $svc 正在运行，两套代理同时开会互相冲突。建议先执行：/etc/init.d/$svc stop && /etc/init.d/$svc disable"
+	fi
+done
+
+TMP=$(mktemp -d /tmp/litebox.XXXXXX) || die "无法创建临时目录。"
+trap 'rm -rf "$TMP"' EXIT
+trap 'rm -rf "$TMP"; exit 1' INT TERM
+
+# ---------- 下载工具 ----------
+
+fetch() { # URL 输出文件
+	case "$DL" in
+		curl) curl -fsSL --connect-timeout 10 --speed-limit 1024 --speed-time 60 -o "$2" "$1" ;;
+		wget) wget -q -T 60 -O "$2" "$1" ;;
+	esac
+}
+
+# 依次输出：直连地址、用户指定镜像、内置镜像
+sources_of() {
+	echo "$1"
+	[ -n "$USER_MIRROR" ] && echo "$USER_MIRROR/$1"
+	for m in $BUILTIN_MIRRORS; do echo "$m/$1"; done
+}
+
+sha_of() { sha256sum "$1" | awk '{ print $1 }'; }
+
+# 下载并校验 SHA256；同目录下若已有同名文件（离线安装）则优先使用
+fetch_verified() { # URL 输出文件 SHA256
+	local name src
+	name=$(basename "$1")
+	if [ -f "$SCRIPT_DIR/$name" ] && [ "$(sha_of "$SCRIPT_DIR/$name")" = "$3" ]; then
+		cp "$SCRIPT_DIR/$name" "$2" && return 0
+	fi
+	for src in $(sources_of "$1"); do
+		info "  下载 $src"
+		if fetch "$src" "$2" 2>/dev/null && [ "$(sha_of "$2")" = "$3" ]; then
+			return 0
+		fi
+		rm -f "$2"
+	done
+	return 1
+}
+
+# 规则文件不锁版本（作者会更新），只检查不是空文件或网页错误页
+fetch_rule() { # URL 输出文件
+	local src
+	for src in $(sources_of "$1"); do
+		if fetch "$src" "$2.tmp" 2>/dev/null && [ -s "$2.tmp" ] && [ "$(head -c 1 "$2.tmp")" != "<" ]; then
+			mv -f "$2.tmp" "$2"
+			return 0
+		fi
+		rm -f "$2.tmp"
+	done
+	return 1
+}
+
+# ---------- mihomo 内核 ----------
+
+info "安装 mihomo $MIHOMO_VER（$ARCH）..."
+asset="mihomo-linux-$ARCH-$MIHOMO_VER.gz"
+fetch_verified "https://github.com/MetaCubeX/mihomo/releases/download/$MIHOMO_VER/$asset" "$TMP/$asset" "$MIHOMO_SHA" \
+	|| die "mihomo 下载失败或校验不通过。可以在电脑上下载 $asset 放到 $SCRIPT_DIR/ 里再运行（离线安装）。"
+mkdir -p "$BIN_DIR" "$HOME_DIR/rules" "$HOME_DIR/providers"
+gunzip -c "$TMP/$asset" > "$BIN_DIR/mihomo.new" || die "解压 mihomo 失败。"
+chmod 755 "$BIN_DIR/mihomo.new"
+"$BIN_DIR/mihomo.new" -v >/dev/null 2>&1 || { rm -f "$BIN_DIR/mihomo.new"; die "mihomo 无法在本机运行（架构不匹配？）。"; }
+mv -f "$BIN_DIR/mihomo.new" "$BIN_DIR/mihomo"
+rm -f "$TMP/$asset"
+
+# ---------- zashboard 面板 ----------
+
+info "安装 zashboard 面板 $UI_VER ..."
+if ! command -v unzip >/dev/null 2>&1; then
+	{ opkg update && opkg install unzip; } >/dev/null 2>&1
+fi
+if ! command -v unzip >/dev/null 2>&1; then
+	warn "没有 unzip，跳过面板预装；内核首次启动时会自己下载面板。"
+elif fetch_verified "https://github.com/Zephyruso/zashboard/releases/download/$UI_VER/$UI_ASSET" "$TMP/ui.zip" "$UI_SHA"; then
+	rm -rf "$TMP/ui"
+	if unzip -q -o "$TMP/ui.zip" -d "$TMP/ui" && [ -f "$TMP/ui/dist/index.html" ]; then
+		rm -rf "$HOME_DIR/ui"
+		mv "$TMP/ui/dist" "$HOME_DIR/ui"
+	else
+		warn "面板解压失败；内核首次启动时会自己下载面板。"
+	fi
+else
+	warn "面板下载失败；内核首次启动时会自己下载面板。"
+fi
+
+# ---------- 规则文件 ----------
+
+info "下载分流规则 ..."
+for pair in \
+	lb_direct.list=$LB_LIST/Direct.list \
+	lb_ai.list=$LB_LIST/AI.list \
+	lb_claude.list=$LB_LIST/Claude.list \
+	lb_chatgpt.list=$LB_LIST/ChatGPT.list \
+	lb_gemini.list=$LB_LIST/Gemini.list \
+	lb_copilot.list=$LB_LIST/Copilot.list \
+	lb_grok.list=$LB_LIST/Grok.list \
+	lb_proxy.list=$LB_LIST/Proxy.list \
+	cn_site.mrs=$META_GEO/geosite/cn.mrs \
+	cn_ip.mrs=$META_GEO/geoip/cn.mrs
+do
+	file=${pair%%=*}
+	url=${pair#*=}
+	fetch_rule "$url" "$HOME_DIR/rules/$file" || warn "  $file 下载失败，内核启动后会经代理重试。"
+done
+
+# ---------- 设置与配置文件 ----------
+
+gen_secret() {
+	od -An -N12 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n'
+}
+
+port_busy() {
+	netstat -ltn 2>/dev/null | awk '{ print $4 }' | grep -q "[:.]$1\$"
+}
+
+# 升级时沿用 litebox.conf 里的端口和密钥；命令行 --port 优先
+ARG_PORT=$PANEL_PORT
+PANEL_PORT="" MIXED_PORT="" SECRET="" MEM_SOFT_MB="" MEM_HARD_MB=""
+[ -f "$CONF" ] && . "$CONF"
+OLD_PANEL_PORT=$PANEL_PORT
+PANEL_PORT=${ARG_PORT:-${OLD_PANEL_PORT:-9090}}
+case "$PANEL_PORT" in ''|*[!0-9]*) die "面板端口必须是数字：$PANEL_PORT" ;; esac
+MIXED_PORT=${MIXED_PORT:-7890}
+SECRET=${SECRET:-$(gen_secret)}
+[ -n "$SECRET" ] || SECRET=$(date +%s | sha256sum | cut -c1-24)
+MEM_SOFT_MB=${MEM_SOFT_MB:-100}
+MEM_HARD_MB=${MEM_HARD_MB:-180}
+
+running=0
+pidof mihomo >/dev/null 2>&1 && running=1
+if [ "$running" = 0 ] || [ "$PANEL_PORT" != "$OLD_PANEL_PORT" ]; then
+	port_busy "$PANEL_PORT" && die "面板端口 $PANEL_PORT 已被占用，请用 --port 换一个，例如 --port 9091"
+fi
+
+cat > "$CONF" <<EOF
+PANEL_PORT=$PANEL_PORT
+MIXED_PORT=$MIXED_PORT
+SECRET=$SECRET
+MEM_SOFT_MB=$MEM_SOFT_MB
+MEM_HARD_MB=$MEM_HARD_MB
+EOF
+
+sed_escape() { printf '%s' "$1" | sed -e "s/'/''/g" -e 's/[\\|&]/\\&/g'; }
+
+if [ -f "$CONFIG" ]; then
+	info "保留已有配置 $CONFIG"
+	sed -i "s|^external-controller: .*|external-controller: 0.0.0.0:$PANEL_PORT|" "$CONFIG"
+else
+	if [ -z "$SUB_URL" ] && [ -r /dev/tty ]; then
+		printf '请输入机场订阅地址（可直接回车跳过，稍后用 litebox sub 设置）：' > /dev/tty
+		read -r SUB_URL < /dev/tty || SUB_URL=""
+	fi
+	tr -d '\r' < "$SCRIPT_DIR/files/config.yaml.tpl" | sed \
+		-e "s|__MIXED_PORT__|$MIXED_PORT|" \
+		-e "s|__PANEL_PORT__|$PANEL_PORT|" \
+		-e "s|__SECRET__|$SECRET|" \
+		-e "s|__SUB_URL__|$(sed_escape "${SUB_URL:-$SUB_PLACEHOLDER}")|" \
+		> "$CONFIG"
+fi
+if [ -n "$SUB_URL" ]; then
+	sed -i "s|^\(    url: \).*# LITEBOX_SUB\$|\1'$(sed_escape "$SUB_URL")' # LITEBOX_SUB|" "$CONFIG"
+	rm -f "$HOME_DIR/providers/sub.yaml"
+fi
+
+info "检查配置 ..."
+"$BIN_DIR/mihomo" -t -d "$HOME_DIR" -f "$CONFIG" > "$TMP/check.log" 2>&1 \
+	|| { cat "$TMP/check.log" >&2; die "配置检查未通过，见上面的输出。"; }
+
+# ---------- 服务、命令、防火墙、看门狗 ----------
+
+info "安装服务和 litebox 命令 ..."
+tr -d '\r' < "$SCRIPT_DIR/files/litebox" > /usr/bin/litebox
+tr -d '\r' < "$SCRIPT_DIR/files/litebox.init" > /etc/init.d/litebox
+chmod 755 /usr/bin/litebox /etc/init.d/litebox
+
+# 局域网流量要能转发进 tun 网卡；fw3 / fw4 都认这套 uci 配置
+uci -q delete firewall.litebox_zone
+uci set firewall.litebox_zone=zone
+uci set firewall.litebox_zone.name=litebox
+uci add_list firewall.litebox_zone.device=litebox0
+uci set firewall.litebox_zone.input=ACCEPT
+uci set firewall.litebox_zone.output=ACCEPT
+uci set firewall.litebox_zone.forward=REJECT
+uci set firewall.litebox_zone.mtu_fix=1
+uci -q delete firewall.litebox_fwd
+uci set firewall.litebox_fwd=forwarding
+uci set firewall.litebox_fwd.src=lan
+uci set firewall.litebox_fwd.dest=litebox
+uci commit firewall
+/etc/init.d/firewall reload >/dev/null 2>&1
+
+touch /etc/crontabs/root
+sed -i '/# litebox$/d' /etc/crontabs/root
+echo '*/5 * * * * /usr/bin/litebox watchdog # litebox' >> /etc/crontabs/root
+/etc/init.d/cron restart >/dev/null 2>&1
+
+/etc/init.d/litebox enable
+
+LAN_IP=$(uci -q get network.lan.ipaddr)
+LAN_IP=${LAN_IP%%/*}
+echo
+if grep -q "$SUB_PLACEHOLDER" "$CONFIG"; then
+	info "安装完成，但还没有设置订阅，所以暂不启动（网络不受影响）。"
+	info "设置订阅后会自动启动：litebox sub '你的订阅地址'"
+else
+	/etc/init.d/litebox restart
+	info "安装完成，已启动。"
+fi
+cat <<EOF
+
+  面板地址：http://${LAN_IP:-路由器IP}:$PANEL_PORT/ui
+  面板密钥：$SECRET
+  （面板里「后端地址」填 http://${LAN_IP:-路由器IP}:$PANEL_PORT ，密钥填上面这串）
+
+  常用命令：litebox status | litebox mem | litebox sub <地址> | litebox stop | litebox uninstall
+EOF

@@ -1,0 +1,31 @@
+#!/bin/sh /etc/rc.common
+# LiteBox：mihomo 透明代理服务（procd 管理，崩溃自动拉起）
+
+START=99
+STOP=10
+USE_PROCD=1
+
+BIN=/usr/lib/litebox/mihomo
+HOME_DIR=/etc/litebox
+
+start_service() {
+	[ -x "$BIN" ] && [ -f "$HOME_DIR/config.yaml" ] || return 1
+	MEM_SOFT_MB=100
+	[ -f "$HOME_DIR/litebox.conf" ] && . "$HOME_DIR/litebox.conf"
+
+	procd_open_instance
+	procd_set_param command "$BIN" -d "$HOME_DIR" -f "$HOME_DIR/config.yaml"
+	# Go 运行时软上限：接近这个值时更积极地回收内存
+	procd_set_param env GOMEMLIMIT="${MEM_SOFT_MB}MiB" GOGC=50
+	procd_set_param limits nofile="65535 65535"
+	procd_set_param respawn 3600 5 5
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+
+	/usr/bin/litebox dns-on
+}
+
+stop_service() {
+	/usr/bin/litebox dns-off
+}

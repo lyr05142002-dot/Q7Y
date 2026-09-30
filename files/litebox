@@ -1,0 +1,187 @@
+#!/bin/sh
+# litebox：LiteBox 管理命令（由 install.sh 安装到 /usr/bin/litebox）
+
+HOME_DIR=/etc/litebox
+BIN=/usr/lib/litebox/mihomo
+CONF=$HOME_DIR/litebox.conf
+CONFIG=$HOME_DIR/config.yaml
+INIT=/etc/init.d/litebox
+DNS_BAK=$HOME_DIR/dnsmasq.bak
+DNS_UPSTREAM=127.0.0.1#1053
+SUB_PLACEHOLDER=https://sub.invalid/litebox-placeholder
+
+PANEL_PORT=9090 SECRET="" MEM_SOFT_MB=100 MEM_HARD_MB=180
+[ -f "$CONF" ] && . "$CONF"
+
+die() { echo "litebox：$*" >&2; exit 1; }
+
+usage() {
+	cat <<EOF
+用法：litebox <命令>
+  status            运行状态、内存占用、面板地址
+  mem               详细内存信息
+  sub [地址]        查看或修改机场订阅地址（修改后自动重启生效）
+  start | stop | restart
+  check             检查配置文件
+  log               查看最近的内核日志
+  panel             显示面板地址和密钥
+  direct            紧急恢复直连（停止并禁用开机自启）
+  uninstall [--purge]  卸载（--purge 同时删除配置和订阅）
+EOF
+}
+
+core_pid() {
+	ubus call service list '{"name":"litebox"}' 2>/dev/null \
+		| jsonfilter -e '@.litebox.instances.*.pid' 2>/dev/null | head -n 1
+}
+
+status_kb() { # pid 字段
+	awk -v k="$2:" '$1 == k { print $2 }' "/proc/$1/status" 2>/dev/null
+}
+
+lan_ip() {
+	local ip
+	ip=$(uci -q get network.lan.ipaddr)
+	echo "${ip%%/*}"
+}
+
+show_panel() {
+	echo "面板地址：http://$(lan_ip):$PANEL_PORT/ui"
+	echo "后端地址：http://$(lan_ip):$PANEL_PORT"
+	echo "面板密钥：$SECRET"
+}
+
+check_config() {
+	"$BIN" -t -d "$HOME_DIR" -f "$CONFIG"
+}
+
+# 让 dnsmasq 把查询转给内核；原来的设置备份到 dnsmasq.bak，停止时原样恢复
+dns_on() {
+	if [ ! -f "$DNS_BAK" ]; then
+		{
+			echo "noresolv=$(uci -q get dhcp.@dnsmasq[0].noresolv)"
+			echo "server=$(uci -q get dhcp.@dnsmasq[0].server)"
+		} > "$DNS_BAK"
+	fi
+	uci -q delete dhcp.@dnsmasq[0].server
+	uci add_list dhcp.@dnsmasq[0].server="$DNS_UPSTREAM"
+	uci set dhcp.@dnsmasq[0].noresolv=1
+	uci commit dhcp
+	/etc/init.d/dnsmasq restart >/dev/null 2>&1
+}
+
+dns_off() {
+	[ -f "$DNS_BAK" ] || return 0
+	local noresolv servers s
+	noresolv=$(sed -n 's/^noresolv=//p' "$DNS_BAK")
+	servers=$(sed -n 's/^server=//p' "$DNS_BAK")
+	uci -q delete dhcp.@dnsmasq[0].server
+	for s in $servers; do
+		uci add_list dhcp.@dnsmasq[0].server="$s"
+	done
+	if [ -n "$noresolv" ]; then
+		uci set dhcp.@dnsmasq[0].noresolv="$noresolv"
+	else
+		uci -q delete dhcp.@dnsmasq[0].noresolv
+	fi
+	uci commit dhcp
+	rm -f "$DNS_BAK"
+	/etc/init.d/dnsmasq restart >/dev/null 2>&1
+}
+
+cmd_status() {
+	local pid rss hwm
+	pid=$(core_pid)
+	if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
+		rss=$(status_kb "$pid" VmRSS)
+		hwm=$(status_kb "$pid" VmHWM)
+		echo "状态：运行中（pid $pid）"
+		echo "内存：当前 $((rss / 1024))MB，峰值 $((hwm / 1024))MB（软上限 ${MEM_SOFT_MB}MB，超过 ${MEM_HARD_MB}MB 自动重启）"
+	else
+		echo "状态：未运行"
+	fi
+	if grep -q "$SUB_PLACEHOLDER" "$CONFIG" 2>/dev/null; then
+		echo "订阅：未设置（litebox sub '订阅地址'）"
+	fi
+	[ -f "$DNS_BAK" ] && echo "DNS：已由内核接管" || echo "DNS：未接管"
+	show_panel
+}
+
+cmd_mem() {
+	local pid
+	pid=$(core_pid)
+	[ -n "$pid" ] || die "内核没有运行。"
+	grep -E '^(VmRSS|VmHWM|VmSwap|RssAnon|RssFile)' "/proc/$pid/status"
+	echo
+	free -m 2>/dev/null || free
+}
+
+cmd_sub() {
+	if [ -z "${1:-}" ]; then
+		sed -n "s/^    url: '\(.*\)' # LITEBOX_SUB\$/\1/p" "$CONFIG" | sed "s/''/'/g"
+		return 0
+	fi
+	case "$1" in http://*|https://*) ;; *) die "订阅地址要以 http:// 或 https:// 开头。" ;; esac
+	local v
+	v=$(printf '%s' "$1" | sed -e "s/'/''/g" -e 's/[\\|&]/\\&/g')
+	cp "$CONFIG" "$CONFIG.bak"
+	sed -i "s|^\(    url: \).*# LITEBOX_SUB\$|\1'$v' # LITEBOX_SUB|" "$CONFIG"
+	if ! check_config >/dev/null 2>&1; then
+		mv -f "$CONFIG.bak" "$CONFIG"
+		die "新配置检查未通过，已还原。"
+	fi
+	rm -f "$CONFIG.bak" "$HOME_DIR/providers/sub.yaml"
+	"$INIT" enable
+	"$INIT" restart
+	echo "订阅已更新，内核已重启。"
+}
+
+# 由 cron 每 5 分钟调用：内存超过硬上限就重启内核
+cmd_watchdog() {
+	local pid rss
+	pid=$(core_pid)
+	[ -n "$pid" ] || return 0
+	rss=$(status_kb "$pid" VmRSS)
+	[ -n "$rss" ] || return 0
+	if [ "$((rss / 1024))" -gt "$MEM_HARD_MB" ]; then
+		logger -t litebox "内核内存 $((rss / 1024))MB 超过上限 ${MEM_HARD_MB}MB，自动重启"
+		"$INIT" restart
+	fi
+}
+
+cmd_uninstall() {
+	"$INIT" stop >/dev/null 2>&1
+	"$INIT" disable >/dev/null 2>&1
+	dns_off
+	uci -q delete firewall.litebox_zone
+	uci -q delete firewall.litebox_fwd
+	uci commit firewall
+	/etc/init.d/firewall reload >/dev/null 2>&1
+	sed -i '/# litebox$/d' /etc/crontabs/root 2>/dev/null
+	/etc/init.d/cron restart >/dev/null 2>&1
+	rm -rf /usr/lib/litebox "$INIT"
+	if [ "${1:-}" = "--purge" ]; then
+		rm -rf "$HOME_DIR"
+		echo "已卸载，配置和订阅也已删除。"
+	else
+		echo "已卸载。配置和订阅保留在 $HOME_DIR（彻底删除：rm -rf $HOME_DIR）。"
+	fi
+	rm -f /usr/bin/litebox
+}
+
+case "${1:-}" in
+	status) cmd_status ;;
+	mem) cmd_mem ;;
+	sub) cmd_sub "${2:-}" ;;
+	start|stop|restart) "$INIT" "$1" ;;
+	check) check_config ;;
+	log) logread 2>/dev/null | grep -E 'litebox|mihomo' | tail -n "${2:-50}" ;;
+	panel) show_panel ;;
+	direct) "$INIT" stop; "$INIT" disable; dns_off; echo "已恢复直连，开机不再自启（恢复：litebox start && /etc/init.d/litebox enable）。" ;;
+	watchdog) cmd_watchdog ;;
+	dns-on) dns_on ;;
+	dns-off) dns_off ;;
+	uninstall) cmd_uninstall "${2:-}" ;;
+	""|-h|--help|help) usage ;;
+	*) usage; exit 1 ;;
+esac

@@ -1,15 +1,21 @@
-# 推送 v* 标签时自动打包并发布 Release
-#   发布说明写在 docs/releases/<标签>.md，例如 docs/releases/v0.1.1.md
-#   git tag v0.1.1 && git push origin v0.1.1
+# 自动打包并发布 Release
+#
+# 发新版：新建发布说明 docs/releases/<版本>.md（例如 docs/releases/v0.1.2.md），推送到 main。
+# 工作流会为还没有 Release 的说明文件打标签、打包并发布。
+# 也可以在 GitHub 网页的 Actions → Release → Run workflow 手动运行（同样只发布还没有的版本）。
 
 name: Release
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    paths: ['docs/releases/v*.md', '.github/workflows/release.yml']
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency: release
 
 jobs:
   release:
@@ -17,7 +23,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Find versions without a release
+        id: todo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          todo=""
+          for f in docs/releases/v*.md; do
+            tag=$(basename "$f" .md)
+            gh release view "$tag" >/dev/null 2>&1 || todo="$todo $tag"
+          done
+          echo "要发布：${todo:-（无）}"
+          echo "tags=$todo" >> "$GITHUB_OUTPUT"
+
       - name: Check scripts
+        if: steps.todo.outputs.tags != ''
         run: |
           sudo apt-get install -y -qq shellcheck
           for f in install.sh get.sh files/litebox files/litebox.init scripts/build-release.sh; do
@@ -26,13 +46,16 @@ jobs:
           shellcheck -s sh -S error install.sh get.sh files/litebox scripts/build-release.sh
 
       - name: Build packages
+        if: steps.todo.outputs.tags != ''
         run: sh scripts/build-release.sh
 
       - name: Publish release
+        if: steps.todo.outputs.tags != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAGS: ${{ steps.todo.outputs.tags }}
         run: |
-          notes="docs/releases/$TAG.md"
-          [ -f "$notes" ] || { echo "缺少发布说明 $notes"; exit 1; }
-          gh release create "$TAG" dist/* --title "LiteBox $TAG" --notes-file "$notes" --latest
+          for tag in $TAGS; do
+            gh release create "$tag" dist/* --target "$GITHUB_SHA" --title "LiteBox $tag" \
+              --notes-file "docs/releases/$tag.md" --latest
+          done

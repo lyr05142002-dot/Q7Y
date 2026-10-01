@@ -221,7 +221,9 @@ cmd_doctor() {
 	fi
 	"$INIT" enabled 2>/dev/null || d_warn "没有开机自启（执行过 litebox direct？恢复：/etc/init.d/litebox enable）"
 
-	if [ -n "$pid" ]; then
+	if [ -n "$pid" ] && ! command -v curl >/dev/null 2>&1; then
+		d_warn "系统没有 curl，跳过面板接口和订阅节点检查（安装：opkg update && opkg install curl）"
+	elif [ -n "$pid" ]; then
 		if api /version | grep -q '"version"'; then
 			d_ok "面板接口正常（端口 $PANEL_PORT）"
 		else

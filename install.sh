@@ -313,7 +313,9 @@ if grep -q "$SUB_PLACEHOLDER" "$CONFIG"; then
 	info "安装完成，但还没有设置订阅，所以暂不启动（网络不受影响）。"
 	info "设置订阅后会自动启动：litebox sub '你的订阅地址'"
 else
-	/etc/init.d/litebox restart
+	# 首次安装时服务还没在运行，restart 里的 stop 会打印 "Command failed: Not found"，所以分开写
+	/etc/init.d/litebox stop >/dev/null 2>&1
+	/etc/init.d/litebox start
 	info "安装完成，已启动。"
 fi
 LAN_IP=${LAN_IP:-192.168.8.1}

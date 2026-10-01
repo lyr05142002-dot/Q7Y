@@ -99,11 +99,26 @@ sh /tmp/litebox/install.sh --sub '你的机场订阅地址'
 
 ![检查](docs/img/07-check.png)
 
-上面几项都正常，就说明装好了。**上不了网时**，先执行 `litebox direct` 恢复直连，再运行下面这条命令，把输出发出来求助：
+也可以在路由器上运行一键自检，它会逐项检查内核、配置、订阅节点、防火墙、DNS 接管、国内外网站连通和内存，每个失败项后面都写了怎么处理：
 
 ```bash
-litebox status; litebox check; logread | grep -i -E 'mihomo|litebox' | tail -n 50
+litebox doctor
 ```
+
+```
+[2] 流量和 DNS 接管
+  [ OK ] 防火墙 litebox 区域已添加
+  [ OK ] 虚拟网卡 litebox0 已创建
+  [ OK ] dnsmasq 已把查询转给内核（127.0.0.1#1053）
+  [ OK ] 域名解析经过内核（返回 198.18.x.x 是正常的）
+
+[3] 网络连通（路由器自己访问）
+  [ OK ] 国内网站（百度）正常
+  [失败] 打不开 Google（000），当前节点不通
+         → 在面板「代理」页换一个节点或点测速；全部超时说明订阅过期或机场故障
+```
+
+**上不了网时**，先执行 `litebox direct` 恢复直连，再运行 `litebox doctor`，把输出整段发出来求助。输出里不含订阅地址和面板密码，日志里的网址只保留域名。
 
 ### 方式二：路由器上一条命令安装
 
@@ -139,6 +154,7 @@ curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/lyr05142002-dot/
 | 命令 | 作用 |
 |---|---|
 | `litebox status` | 运行状态、当前 / 峰值内存、面板地址 |
+| `litebox doctor` | **出问题时先跑这个**：一键自检并给出处理建议 |
 | `litebox mem` | 详细内存信息 |
 | `litebox sub '地址'` | 更换订阅（不带地址 = 查看当前订阅） |
 | `litebox panel` | 显示面板的一键登录链接和密码 |

@@ -322,5 +322,5 @@ cat <<EOF
   一键登录：http://$LAN_IP:$PANEL_PORT/ui/#/setup?hostname=$LAN_IP&port=$PANEL_PORT&secret=$SECRET
   （复制到浏览器打开即可。手动登录时：主机 $LAN_IP，端口 $PANEL_PORT，密码 $SECRET）
 
-  常用命令：litebox status | litebox mem | litebox sub <地址> | litebox panel | litebox direct
+  常用命令：litebox status | litebox doctor | litebox mem | litebox sub <地址> | litebox panel | litebox direct
 EOF

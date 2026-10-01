@@ -10,7 +10,7 @@ DNS_BAK=$HOME_DIR/dnsmasq.bak
 DNS_UPSTREAM=127.0.0.1#1053
 SUB_PLACEHOLDER=https://sub.invalid/litebox-placeholder
 
-PANEL_PORT=9090 SECRET="" MEM_SOFT_MB=100 MEM_HARD_MB=180
+PANEL_PORT=9090 MIXED_PORT=7890 SECRET="" MEM_SOFT_MB=100 MEM_HARD_MB=180
 [ -f "$CONF" ] && . "$CONF"
 
 die() { echo "litebox：$*" >&2; exit 1; }
@@ -19,6 +19,7 @@ usage() {
 	cat <<EOF
 用法：litebox <命令>
   status            运行状态、内存占用、面板地址
+  doctor            一键自检：内核、订阅、DNS、网络、内存，出问题时先跑这个
   mem               详细内存信息
   sub [地址]        查看或修改机场订阅地址（修改后自动重启生效）
   start | stop | restart
@@ -150,6 +151,199 @@ cmd_watchdog() {
 	fi
 }
 
+# ---------- doctor：一键自检 ----------
+# 输出里不含面板密码；日志和报错中的网址只保留域名，订阅 token 不会泄露，可以直接发给别人求助
+
+DOC_FAIL=0 DOC_WARN=0
+d_ok() { echo "  [ OK ] $*"; }
+d_bad() { echo "  [失败] $*"; DOC_FAIL=$((DOC_FAIL + 1)); }
+d_warn() { echo "  [注意] $*"; DOC_WARN=$((DOC_WARN + 1)); }
+d_hint() { echo "         → $*"; }
+mask_urls() { sed -r 's#(https?://[^/"\\ ]+)[^"\\ ]*#\1/***#g'; }
+
+# 输出 HTTP 状态码，失败输出 000；没有 curl 时用 wget，成功输出 ok
+http_code() { # URL [curl 额外参数...]
+	local url="$1"
+	shift
+	if command -v curl >/dev/null 2>&1; then
+		curl -s -o /dev/null -m 8 -w '%{http_code}' "$@" "$url" 2>/dev/null || true
+	else
+		wget -q -O /dev/null -T 8 "$url" 2>/dev/null && echo ok || echo 000
+	fi
+}
+
+api() { # 路径
+	command -v curl >/dev/null 2>&1 || return 1
+	curl -s -m 5 --noproxy '*' -H "Authorization: Bearer $SECRET" "http://127.0.0.1:$PANEL_PORT$1" 2>/dev/null
+}
+
+# 「🚀 节点选择」分组的 URL 编码
+GROUP_MAIN=%F0%9F%9A%80%20%E8%8A%82%E7%82%B9%E9%80%89%E6%8B%A9
+
+cmd_doctor() {
+	local pid="" rss hwm out n f now code avail svc errs dns_up=0
+	echo "LiteBox 自检（$(date '+%F %T')）"
+
+	echo
+	echo "[1] 内核与配置"
+	if [ -x "$BIN" ]; then
+		d_ok "内核 $("$BIN" -v 2>/dev/null | head -n 1 | awk '{ print $3 }')"
+	else
+		d_bad "找不到内核 $BIN"
+		d_hint "重新运行 install.sh"
+	fi
+	if out=$(check_config 2>&1); then
+		d_ok "配置文件检查通过"
+	else
+		d_bad "配置文件有错误："
+		echo "$out" | tail -n 3 | mask_urls | sed 's/^/           /'
+		d_hint "改回出错的地方后执行 litebox check；改乱了可以删掉 $CONFIG 重新运行 install.sh"
+	fi
+	if grep -q "$SUB_PLACEHOLDER" "$CONFIG" 2>/dev/null; then
+		d_bad "还没有设置订阅"
+		d_hint "litebox sub '你的订阅地址'"
+	fi
+	pid=$(core_pid)
+	if [ -n "$pid" ] && [ -d "/proc/$pid" ] && [ "$(status_kb "$pid" State)" != Z ]; then
+		rss=$(status_kb "$pid" VmRSS)
+		hwm=$(status_kb "$pid" VmHWM)
+		rss=$((${rss:-0} / 1024)) hwm=$((${hwm:-0} / 1024))
+		if [ "$rss" -gt "$MEM_SOFT_MB" ]; then
+			d_warn "运行中，内存 ${rss}MB 超过软上限 ${MEM_SOFT_MB}MB（峰值 ${hwm}MB，超过 ${MEM_HARD_MB}MB 会自动重启）"
+			d_hint "节点或连接太多时会这样；可以在订阅里少放节点，或在 $CONF 调高 MEM_SOFT_MB"
+		else
+			d_ok "运行中（pid $pid），内存 ${rss}MB，峰值 ${hwm}MB"
+		fi
+	else
+		pid=""
+		d_bad "内核没有运行"
+		d_hint "litebox start 启动，起不来就看 litebox log"
+	fi
+	"$INIT" enabled 2>/dev/null || d_warn "没有开机自启（执行过 litebox direct？恢复：/etc/init.d/litebox enable）"
+
+	if [ -n "$pid" ]; then
+		if api /version | grep -q '"version"'; then
+			d_ok "面板接口正常（端口 $PANEL_PORT）"
+		else
+			d_bad "面板接口无响应（端口 $PANEL_PORT）"
+			d_hint "litebox restart；还不行就看 litebox log 里有没有端口被占用"
+		fi
+		[ -f "$HOME_DIR/ui/index.html" ] || d_warn "面板网页文件缺失，内核会自动下载，稍后再刷新页面"
+		n=$(api /providers/proxies/sub | jsonfilter -e '@.proxies[*].name' 2>/dev/null | wc -l)
+		if [ "${n:-0}" -gt 0 ]; then
+			now=$(api "/proxies/$GROUP_MAIN" | jsonfilter -e '@.now' 2>/dev/null)
+			d_ok "订阅已加载 $n 个节点，「🚀 节点选择」当前用：${now:-未知}"
+		else
+			d_bad "订阅里没有节点"
+			d_hint "订阅可能过期或下载失败：在浏览器打开订阅地址确认，再 litebox sub '订阅地址' 重新拉取"
+		fi
+	fi
+	n=0
+	for f in "$HOME_DIR"/rules/*; do
+		[ -s "$f" ] && n=$((n + 1))
+	done
+	if [ "$n" -ge 10 ]; then
+		d_ok "分流规则 $n 个文件"
+	else
+		d_warn "分流规则只有 $n/10 个文件，缺的会在内核启动后经代理自动下载"
+	fi
+
+	echo
+	echo "[2] 流量和 DNS 接管"
+	if [ "$(uci -q get firewall.litebox_zone)" = zone ] && [ "$(uci -q get firewall.litebox_fwd.dest)" = litebox ]; then
+		d_ok "防火墙 litebox 区域已添加"
+	else
+		d_bad "防火墙缺少 litebox 区域，局域网设备的流量进不了代理"
+		d_hint "重新运行 install.sh"
+	fi
+	uci -q get dhcp.@dnsmasq[0].server | grep -q "$DNS_UPSTREAM" && dns_up=1
+	if [ -n "$pid" ]; then
+		if ip link show litebox0 >/dev/null 2>&1; then
+			d_ok "虚拟网卡 litebox0 已创建"
+		else
+			d_bad "虚拟网卡 litebox0 不存在，流量没有被接管"
+			d_hint "确认已安装 kmod-tun，然后 litebox restart"
+		fi
+		if [ "$dns_up" = 1 ]; then
+			d_ok "dnsmasq 已把查询转给内核（$DNS_UPSTREAM）"
+		else
+			d_bad "dnsmasq 没有把查询转给内核"
+			d_hint "litebox restart"
+		fi
+		if nslookup www.google.com 127.0.0.1 2>/dev/null | grep -q '198\.18\.'; then
+			d_ok "域名解析经过内核（返回 198.18.x.x 是正常的）"
+		else
+			d_bad "域名解析没有经过内核"
+			d_hint "litebox restart；还不行看 litebox log 里有没有 1053 端口被占用"
+		fi
+	elif [ "$dns_up" = 1 ]; then
+		d_bad "内核没运行，但 DNS 还指向内核，全家都会解析不了域名"
+		d_hint "马上执行 litebox direct 恢复"
+	else
+		d_ok "内核没运行，DNS 已恢复为原来的设置"
+	fi
+
+	echo
+	echo "[3] 网络连通（路由器自己访问）"
+	code=$(http_code https://www.baidu.com)
+	case "$code" in
+		200|ok) d_ok "国内网站（百度）正常" ;;
+		*)
+			d_bad "打不开百度（$code）"
+			d_hint "先执行 litebox direct；还打不开说明是宽带或路由器本身的问题，和 LiteBox 无关"
+			;;
+	esac
+	if [ -n "$pid" ]; then
+		code=$(http_code https://www.gstatic.com/generate_204)
+		case "$code" in
+			204|ok) d_ok "国外网站（Google）正常，代理工作中" ;;
+			*)
+				if command -v curl >/dev/null 2>&1 &&
+					[ "$(http_code https://www.gstatic.com/generate_204 -x "http://127.0.0.1:$MIXED_PORT")" = 204 ]; then
+					d_bad "节点能用，但流量没有被自动接管"
+					d_hint "看上面 [2] 哪项失败；临时可以把设备的代理设成 $(lan_ip):$MIXED_PORT"
+				else
+					d_bad "打不开 Google（$code），当前节点不通"
+					d_hint "在面板「代理」页换一个节点或点测速；全部超时说明订阅过期或机场故障"
+				fi
+				;;
+		esac
+	fi
+
+	echo
+	echo "[4] 系统"
+	avail=$(awk '/^MemAvailable:/ { printf "%d", $2 / 1024 }' /proc/meminfo)
+	if [ "${avail:-0}" -ge 50 ]; then
+		d_ok "系统剩余可用内存 ${avail}MB"
+	else
+		d_warn "系统剩余可用内存只有 ${avail}MB"
+		d_hint "关掉路由器上不用的插件（AdGuard Home 等）"
+	fi
+	for svc in openclash nikki mihomo passwall passwall2 shadowsocksr sing-box openbox homeproxy; do
+		if [ -x "/etc/init.d/$svc" ] && "/etc/init.d/$svc" running >/dev/null 2>&1; then
+			d_bad "$svc 也在运行，两套代理会互相冲突"
+			d_hint "/etc/init.d/$svc stop && /etc/init.d/$svc disable"
+		fi
+	done
+	grep -q 'litebox watchdog' /etc/crontabs/root 2>/dev/null || d_warn "内存看门狗没有配置（重新运行 install.sh 可恢复）"
+	errs=$(logread 2>/dev/null | grep -E 'litebox|mihomo' | grep -iE 'level=(error|fatal)|panic' | tail -n 3)
+	if [ -n "$errs" ]; then
+		d_warn "日志里最近的错误："
+		echo "$errs" | mask_urls | cut -c 1-200 | sed 's/^/           /'
+	fi
+
+	echo
+	if [ "$DOC_FAIL" = 0 ] && [ "$DOC_WARN" = 0 ]; then
+		echo "结论：全部正常。"
+	elif [ "$DOC_FAIL" = 0 ]; then
+		echo "结论：可以正常使用，有 $DOC_WARN 项需要留意。"
+	else
+		echo "结论：发现 $DOC_FAIL 项问题，$DOC_WARN 项需要留意。按 → 后面的提示处理。"
+		echo "上不了网时先执行 litebox direct 恢复直连。求助时把以上输出整段发出去即可（不含订阅地址和面板密码）。"
+		return 1
+	fi
+}
+
 cmd_uninstall() {
 	"$INIT" stop >/dev/null 2>&1
 	"$INIT" disable >/dev/null 2>&1
@@ -172,6 +366,7 @@ cmd_uninstall() {
 
 case "${1:-}" in
 	status) cmd_status ;;
+	doctor) cmd_doctor ;;
 	mem) cmd_mem ;;
 	sub) cmd_sub "${2:-}" ;;
 	start|stop|restart) "$INIT" "$1" ;;

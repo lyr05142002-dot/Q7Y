@@ -1,0 +1,38 @@
+# 推送 v* 标签时自动打包并发布 Release
+#   发布说明写在 docs/releases/<标签>.md，例如 docs/releases/v0.1.1.md
+#   git tag v0.1.1 && git push origin v0.1.1
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check scripts
+        run: |
+          sudo apt-get install -y -qq shellcheck
+          for f in install.sh get.sh files/litebox files/litebox.init scripts/build-release.sh; do
+            sh -n "$f"
+          done
+          shellcheck -s sh -S error install.sh get.sh files/litebox scripts/build-release.sh
+
+      - name: Build packages
+        run: sh scripts/build-release.sh
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          notes="docs/releases/$TAG.md"
+          [ -f "$notes" ] || { echo "缺少发布说明 $notes"; exit 1; }
+          gh release create "$TAG" dist/* --title "LiteBox $TAG" --notes-file "$notes" --latest

@@ -225,9 +225,9 @@ const ICON = {
 // 四个测试站点：经由哪个分组测，就和平时访问这个网站走的线路一致
 const SITES = [
 	{ id: "baidu", name: "百度", url: "https://www.baidu.com", via: ["DIRECT"] },
-	{ id: "google", name: "Google", url: "https://www.google.com/generate_204", via: ["🚀 节点选择", "GLOBAL"] },
+	{ id: "google", name: "Google", url: "https://www.google.com/generate_204", via: ["Google", "🚀 节点选择", "GLOBAL"] },
 	{ id: "ai", name: "OpenAI", url: "https://chatgpt.com/favicon.ico", via: ["🤖 AI", "🚀 节点选择", "GLOBAL"] },
-	{ id: "github", name: "GitHub", url: "https://github.com", via: ["🚀 节点选择", "GLOBAL"] },
+	{ id: "github", name: "GitHub", url: "https://github.com", via: ["GitHub", "🚀 节点选择", "GLOBAL"] },
 ];
 
 let SECRET = "";
@@ -480,7 +480,7 @@ async function refreshRules() {
 const SET_NAMES = {
 	lb_direct: "直连域名", lb_proxy: "代理域名", lb_ai: "AI 服务", lb_claude: "Claude", lb_chatgpt: "ChatGPT", lb_gemini: "Gemini", lb_copilot: "Copilot", lb_grok: "Grok",
 	cn_site: "国内网站", cn_ip: "国内 IP", ms_youtube: "YouTube", ms_netflix: "Netflix", ms_google: "Google", ms_github: "GitHub", ms_telegram: "Telegram",
-	ms_twitter: "X / Twitter", ms_telegram_ip: "Telegram IP",
+	ms_twitter: "X / Twitter", ms_tiktok: "TikTok", ms_telegram_ip: "Telegram IP",
 };
 function ruleName(type, payload) {
 	if (/^RuleSet$/i.test(type)) return (SET_NAMES[payload] ? SET_NAMES[payload] + " · " : "") + payload;

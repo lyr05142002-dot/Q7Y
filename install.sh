@@ -282,6 +282,7 @@ for pair in \
 	ms_github.mrs=$META_GEO/geosite/github.mrs \
 	ms_telegram.mrs=$META_GEO/geosite/telegram.mrs \
 	ms_twitter.mrs=$META_GEO/geosite/twitter.mrs \
+	ms_tiktok.mrs=$META_GEO/geosite/tiktok.mrs \
 	ms_telegram_ip.mrs=$META_GEO/geoip/telegram.mrs
 do
 	file=${pair%%=*}

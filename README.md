@@ -178,7 +178,7 @@ curl -fsSL https://raw.githubusercontent.com/lyr05142002-dot/Q7Y/main/get.sh | s
 
 进入面板后在「代理」页切换节点：
 
-![面板里的四个分组](docs/img/05-groups.png)
+![面板里的分组（每个都带图标）](docs/img/05-groups.png)
 
 ### 概览和路由测试
 
@@ -273,12 +273,12 @@ sh /tmp/litebox/install.sh
 | 🚀 节点选择 | 默认代理出口：可选「♻️ 自动选择」、直连或任意节点 |
 | ♻️ 自动选择 | 每 10 分钟测一次速，自动选延迟最低的节点 |
 | 🤖 AI | ChatGPT / Claude / Gemini / Copilot / Grok 等单独选节点（AI 服务通常要固定地区） |
-| 📺 流媒体 | YouTube、Netflix 单独选节点（比如选会员价格便宜或解锁好的地区） |
+| YouTube、Netflix、Google、GitHub、Telegram、X、TikTok | 常用境外应用各一个分组，带应用图标，默认跟随「🚀 节点选择」；想让某个应用单独走某个节点（比如 Netflix 选解锁好的地区）就在面板里改它 |
 | 🐟 漏网之鱼 | 没命中任何规则的流量，默认走代理，可改直连 |
 
-规则从上往下匹配：局域网直连 → 作者的直连名单 → 屏蔽走代理的 QUIC → AI 名单 → YouTube / Netflix（📺 流媒体）→ Google / GitHub / Telegram / Twitter（🚀 节点选择）→ 作者的代理名单 → 国内域名直连 → 国内 IP 直连 → 其余走「漏网之鱼」。
+规则从上往下匹配：局域网直连 → 作者的直连名单 → 屏蔽走代理的 QUIC → AI 名单 → YouTube / Netflix / Google / GitHub / Telegram / X / TikTok（各自的分组）→ 作者的代理名单 → 国内域名直连 → 国内 IP 直连 → 其余走「漏网之鱼」。
 
-YouTube、Netflix、Google、GitHub、Telegram、Twitter 的规则来自 [MetaCubeX/meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat)（mrs 格式，每个只有几 KB），手机版 Shadowrocket 用的是 [blackmatrix7/ios_rule_script](https://github.com/blackmatrix7/ios_rule_script) 里对应的列表。
+YouTube、Netflix、Google、GitHub、Telegram、X（Twitter）、TikTok 的规则来自 [MetaCubeX/meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat)（mrs 格式，每个只有几 KB），手机版 Shadowrocket 用的是 [blackmatrix7/ios_rule_script](https://github.com/blackmatrix7/ios_rule_script) 里对应的列表。手机版为了界面简洁，YouTube 和 Netflix 合成一个「📺 流媒体」分组，其余应用跟随「🚀 节点选择」。
 
 国内 IP 规则带 `no-resolve`：有域名的连接只按域名判断，不在国内域名名单里的域名默认走代理（想直连就把「🐟 漏网之鱼」切成直连）。
 

@@ -137,10 +137,28 @@ run_round() { # 名字 docker网络参数
 	# shellcheck disable=SC2086
 	docker run -d --privileged --name "$c" $net "$IMAGE" /sbin/init >/dev/null
 	sleep 8
+	x() { docker exec "$c" sh -c "$1"; }
+	if [ -z "$net" ]; then
+		# OpenWrt 开机时会把 eth0 并进 br-lan、改成 192.168.1.1，Docker 给的地址和默认路由就没了，容器其实上不了网。
+		# 按真实路由器的样子配：eth0 当 wan（用 Docker 分的地址），br-lan 留作 lan
+		set -- $(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}/{{.IPPrefixLen}} {{.Gateway}}{{end}}' "$c")
+		x "uci -q delete network.@device[0].ports; uci set network.@device[0].bridge_empty=1
+			uci set network.wan=interface; uci set network.wan.device=eth0; uci set network.wan.proto=static
+			uci set network.wan.ipaddr=$1; uci set network.wan.gateway=$2
+			uci set network.wan.dns=\"\$(awk '/^nameserver/ { print \$2; exit }' /etc/resolv.conf)\"
+			uci commit network; /etc/init.d/network restart
+			for i in \$(seq 1 20); do ip route | grep -q '^default' && break; sleep 1; done" >/dev/null 2>&1 || true
+		if x 'wget -q -T 15 -O /dev/null https://raw.githubusercontent.com/liandu2024/clash/main/list/AI.list' >/dev/null 2>&1; then
+			ok "容器能上网（eth0 当 wan）"
+		elif [ -n "${CI:-}" ]; then
+			bad "容器连不上外网：$(x 'ip route; cat /etc/resolv.conf' 2>&1 | tr '\n' ' ')"
+		else
+			echo "  - 这台机器的容器连不上外网，下载相关的检查会跳过"
+		fi
+	fi
 	docker cp "$PKG" "$c:/root/litebox"
 	docker cp "$WORK/sub" "$c:/root/sub"
 	docker cp "$WORK/rules-test.yaml" "$c:/root/rules-test.yaml"
-	x() { docker exec "$c" sh -c "$1"; }
 	x 'uhttpd -p 127.0.0.1:8765 -h /root/sub'
 	x 'mkdir -p /etc/crontabs; /etc/init.d/cron enable; /etc/init.d/cron start' >/dev/null 2>&1 || true
 

@@ -5,7 +5,7 @@ name: Test
 on:
   push:
     branches: [main]
-    paths: ['install.sh', 'get.sh', 'files/**', 'scripts/**']
+    paths: ['install.sh', 'get.sh', 'files/**', 'scripts/**', 'README.md']
   pull_request:
   workflow_dispatch:
 
@@ -21,8 +21,9 @@ jobs:
           for f in install.sh get.sh files/litebox files/litebox.init scripts/build-release.sh scripts/test-openwrt.sh; do
             sh -n "$f"
           done
-          shellcheck -s sh -S error install.sh get.sh files/litebox scripts/build-release.sh scripts/check-web.sh
+          shellcheck -s sh -S error install.sh get.sh files/litebox files/litebox-firewall.sh scripts/build-release.sh scripts/check-web.sh scripts/check-docs.sh
           sh scripts/check-web.sh
+          sh scripts/check-docs.sh
 
       - name: Install test on OpenWrt 21.02
         run: sh scripts/test-openwrt.sh

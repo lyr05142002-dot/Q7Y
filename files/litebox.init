@@ -30,6 +30,8 @@ start_service() {
 
 	/usr/bin/litebox dns-on
 	/usr/bin/litebox panel-sync
+	# 访客网络等其他能上网的区域也要放行到 litebox，否则会被 TUN 路由带进来后挡掉、整个断网
+	/usr/bin/litebox zones-sync
 	# 防火墙加速层要等内核开始监听，放后台做，不拖慢启动
 	[ -x /usr/lib/litebox/firewall.sh ] && (/usr/lib/litebox/firewall.sh start >/dev/null 2>&1 &)
 }

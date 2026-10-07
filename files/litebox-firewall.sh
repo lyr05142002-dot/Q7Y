@@ -8,7 +8,9 @@
 # 条件不满足时（没有 ipset、fw4、旧配置没有 redir-port 等）只做能做的部分，其余流量照常走 TUN，
 # 和没有加速层时完全一样。当前状态写在 /tmp/litebox-fw.state，litebox doctor 会显示。
 #
-# 用法：litebox-firewall.sh start | stop | reload（不带参数 = reload，fw3 重载防火墙时调用）
+# 用法：litebox-firewall.sh start | stop | reload | check（不带参数 = reload，fw3 重载防火墙时调用）
+#   check 只检查不改动：能完整加速时什么都不输出、返回 0；手动关了返回 2；
+#   降级时返回 1，一行一个原因：「原因|pkg:要装的包」或「原因|cmd:补救命令」或「原因|」（没有补救办法）
 
 HOME_DIR=/etc/litebox
 CONF=$HOME_DIR/litebox.conf
@@ -100,6 +102,26 @@ bypass_ready() {
 	return 0
 }
 
+check() {
+	local out=""
+	[ "$ACCEL" = 0 ] && return 2
+	if [ -x /sbin/fw4 ] || ! command -v iptables >/dev/null 2>&1; then
+		echo "系统防火墙是 nftables（fw4），加速层只支持 fw3 / iptables|"
+		return 1
+	fi
+	command -v ipset >/dev/null 2>&1 || out="${out}没有 ipset|pkg:ipset
+"
+	ip -V 2>/dev/null | grep -q iproute2 || out="${out}没有完整版 ip（ip-full）|pkg:ip-full
+"
+	[ -s "$CN_LIST" ] || out="${out}没有国内 IP 列表|cmd:litebox rules-update
+"
+	[ -n "$(redir_port)" ] || out="${out}配置里没有 redir-port（旧配置）|cmd:litebox update --reset-config
+"
+	[ -n "$out" ] || return 0
+	printf '%s' "$out"
+	return 1
+}
+
 start() {
 	local dev port bypass=0 redir=0 i
 	stop
@@ -155,9 +177,10 @@ start() {
 case "${1:-reload}" in
 	start) take_lock || exit 1; start ;;
 	stop) take_lock || exit 1; stop ;;
+	check) check; exit $? ;;
 	reload)
 		# fw3 重载会清掉自定义规则，这里按内核是否在运行重新加上；放后台（单独的进程，自己拿锁），不拖慢防火墙重载。
 		# fw3 是用 sh -c ". 脚本路径" 调用的，所以这里写死路径
 		if core_running; then ("$SELF" start >/dev/null 2>&1 &); else take_lock || exit 1; stop; fi ;;
-	*) echo "用法：$0 start|stop|reload" >&2; exit 1 ;;
+	*) echo "用法：$0 start|stop|reload|check" >&2; exit 1 ;;
 esac

@@ -28,8 +28,6 @@ CONFIG=$HOME_DIR/config.yaml
 MIN_FREE_KB=81920
 SUB_PLACEHOLDER=https://sub.invalid/litebox-placeholder
 BUILTIN_MIRRORS="https://ghfast.top https://gh-proxy.com"
-LB_LIST=https://raw.githubusercontent.com/liandu2024/clash/main/list
-META_GEO=https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 TMP=""
@@ -82,7 +80,7 @@ case "$SUB_URL" in ""|http://*|https://*) ;; *) die "--sub 后面要跟以 http:
 
 [ "$(id -u)" = 0 ] || die "请以 root 身份运行。"
 [ -f /etc/openwrt_release ] && [ -f /etc/rc.common ] || die "只支持 OpenWrt 系统（包括 GL.iNet 官方固件）。"
-for f in config.yaml.tpl litebox litebox.init litebox-firewall.sh panel.html luci-litebox.js luci-litebox-menu.json luci-litebox-acl.json; do
+for f in config.yaml.tpl litebox litebox.init litebox-firewall.sh panel.html personal-rules.txt luci-litebox.js luci-litebox-menu.json luci-litebox-acl.json; do
 	[ -f "$SCRIPT_DIR/files/$f" ] || die "安装包不完整，缺少 files/$f。请重新下载安装包，把整个 litebox 文件夹上传后再运行。"
 done
 
@@ -246,25 +244,6 @@ fetch_verified() { # URL 输出文件 SHA256
 	return 1
 }
 
-# 规则文件不锁版本（作者会更新），只检查不是空文件或网页错误页。
-# 记住上一次成功的下载源（直连或某个镜像）下次先试；连续两个文件全部失败多半是网络不通，
-# 剩下的不再逐个等超时，交给内核启动后经代理下载
-RULE_SRC="" RULE_FAILS=0
-fetch_rule() { # URL 输出文件
-	local src
-	[ "$RULE_FAILS" -ge 2 ] && return 1
-	for src in ${RULE_SRC:+"$RULE_SRC$1"} $(sources_of "$1"); do
-		if fetch "$src" "$2.tmp" 2>/dev/null && [ -s "$2.tmp" ] && [ "$(head -c 1 "$2.tmp")" != "<" ]; then
-			mv -f "$2.tmp" "$2"
-			RULE_SRC=${src%"$1"} RULE_FAILS=0
-			return 0
-		fi
-		rm -f "$2.tmp"
-	done
-	RULE_FAILS=$((RULE_FAILS + 1))
-	return 1
-}
-
 # ---------- mihomo 内核 ----------
 
 info "安装 mihomo $MIHOMO_VER（$ARCH）..."
@@ -308,38 +287,14 @@ fi
 
 # ---------- 规则文件 ----------
 
+# 和每天的自动更新用同一套下载和校验（files/litebox rules-update）：下载到网页、空文件或格式不对的不替换，
+# 视频作者个人用的条目分到单独的文件。升级时按现有配置里的规则集下载，新装或 --reset-config 按模板。
+# 下载不到的不影响安装：内核启动后由看门狗经代理补下载
 info "下载分流规则 ..."
-skipped=""
-for pair in \
-	lb_direct.list=$LB_LIST/Direct.list \
-	lb_ai.list=$LB_LIST/AI.list \
-	lb_claude.list=$LB_LIST/Claude.list \
-	lb_chatgpt.list=$LB_LIST/ChatGPT.list \
-	lb_gemini.list=$LB_LIST/Gemini.list \
-	lb_copilot.list=$LB_LIST/Copilot.list \
-	lb_grok.list=$LB_LIST/Grok.list \
-	lb_proxy.list=$LB_LIST/Proxy.list \
-	cn_site.mrs=$META_GEO/geosite/cn.mrs \
-	cn_ip.list=$META_GEO/geoip/cn.list \
-	cn_ip.mrs=$META_GEO/geoip/cn.mrs \
-	ms_youtube.mrs=$META_GEO/geosite/youtube.mrs \
-	ms_netflix.mrs=$META_GEO/geosite/netflix.mrs \
-	ms_google.mrs=$META_GEO/geosite/google.mrs \
-	ms_github.mrs=$META_GEO/geosite/github.mrs \
-	ms_telegram.mrs=$META_GEO/geosite/telegram.mrs \
-	ms_twitter.mrs=$META_GEO/geosite/twitter.mrs \
-	ms_tiktok.mrs=$META_GEO/geosite/tiktok.mrs \
-	ms_telegram_ip.mrs=$META_GEO/geoip/telegram.mrs
-do
-	file=${pair%%=*}
-	url=${pair#*=}
-	if [ "$RULE_FAILS" -ge 2 ]; then
-		[ -f "$HOME_DIR/rules/$file" ] || skipped="$skipped $file"
-		continue
-	fi
-	fetch_rule "$url" "$HOME_DIR/rules/$file" || warn "  $file 下载失败，内核启动后会经代理重试。"
-done
-[ -n "$skipped" ] && warn "  连不上规则下载地址，其余规则（$skipped ）由内核启动后经代理下载。"
+RULES_FROM=$SCRIPT_DIR/files/config.yaml.tpl
+[ -f "$CONFIG" ] && [ "$RESET_CONFIG" = 0 ] && RULES_FROM=$CONFIG
+LB_PERSONAL="$SCRIPT_DIR/files/personal-rules.txt" sh "$SCRIPT_DIR/files/litebox" rules-update --install --from "$RULES_FROM" \
+	${USER_MIRROR:+--mirror "$USER_MIRROR"} 2>&1 | sed 's/^/[litebox]   /'
 
 # ---------- 停用其他代理插件 ----------
 
@@ -379,7 +334,7 @@ port_busy() {
 
 # 升级时沿用 litebox.conf 里的端口和密钥；命令行 --port 优先
 ARG_PORT=$PANEL_PORT
-PANEL_PORT="" MIXED_PORT="" SECRET="" MEM_SOFT_MB="" MEM_HARD_MB="" ACCEL=""
+PANEL_PORT="" MIXED_PORT="" SECRET="" MEM_SOFT_MB="" MEM_HARD_MB="" ACCEL="" WATCHDOG_MIN=""
 [ -f "$CONF" ] && . "$CONF"
 OLD_PANEL_PORT=$PANEL_PORT
 PANEL_PORT=${ARG_PORT:-${OLD_PANEL_PORT:-9090}}
@@ -390,6 +345,9 @@ SECRET=${SECRET:-$(gen_secret)}
 MEM_SOFT_MB=${MEM_SOFT_MB:-100}
 MEM_HARD_MB=${MEM_HARD_MB:-180}
 ACCEL=${ACCEL:-1}
+# 看门狗检查间隔（分钟），可用 litebox watchdog-interval 修改
+case "$WATCHDOG_MIN" in ''|*[!0-9]*) WATCHDOG_MIN=5 ;; esac
+[ "$WATCHDOG_MIN" -ge 1 ] && [ "$WATCHDOG_MIN" -le 30 ] || WATCHDOG_MIN=5
 
 running=0
 pidof mihomo >/dev/null 2>&1 && running=1
@@ -404,6 +362,7 @@ SECRET=$SECRET
 MEM_SOFT_MB=$MEM_SOFT_MB
 MEM_HARD_MB=$MEM_HARD_MB
 ACCEL=$ACCEL
+WATCHDOG_MIN=$WATCHDOG_MIN
 EOF
 
 sed_escape() { printf '%s' "$1" | sed -e "s/'/''/g" -e 's/[\\|&]/\\&/g'; }
@@ -421,6 +380,19 @@ fi
 if [ -f "$CONFIG" ]; then
 	info "保留已有配置 $CONFIG"
 	sed -i "s|^external-controller: .*|external-controller: 0.0.0.0:$PANEL_PORT|" "$CONFIG"
+	# v0.7.0 起分流规则由 litebox 校验后更新：旧配置里的规则集从 http 改成 file，内核不再自己下载
+	# （内核自己下载时，下载到出错网页或空文件也会照样覆盖，规则就没了）
+	if awk '/^rule-providers:/ { f = 1; next } f && /^[^ #]/ { f = 0 } f && /^    type: http$/ { n++ } END { exit !n }' "$CONFIG"; then
+		cp "$CONFIG" "$CONFIG.pre-0.7"
+		awk '/^rule-providers:/ { f = 1; print; next } f && /^[^ #]/ { f = 0 } f && /^    type: http$/ { print "    type: file"; next } { print }' \
+			"$CONFIG.pre-0.7" > "$CONFIG"
+		if "$BIN_DIR/mihomo" -t -d "$HOME_DIR" -f "$CONFIG" >/dev/null 2>&1; then
+			info "分流规则改为校验后再更新（改之前的配置备份为 $CONFIG.pre-0.7）"
+		else
+			cp "$CONFIG.pre-0.7" "$CONFIG"
+			warn "分流规则没能改成校验后更新，保持原样。可以 --reset-config 重新生成配置。"
+		fi
+	fi
 else
 	tr -d '\r' < "$SCRIPT_DIR/files/config.yaml.tpl" | sed \
 		-e "s|__MIXED_PORT__|$MIXED_PORT|" \
@@ -447,6 +419,8 @@ tr -d '\r' < "$SCRIPT_DIR/files/litebox-firewall.sh" > "$BIN_DIR/firewall.sh"
 chmod 755 /usr/bin/litebox /etc/init.d/litebox "$BIN_DIR/firewall.sh"
 # 概览 / 路由测试页：原件放在程序目录，面板目录被「更新面板」清掉时 litebox 会补回去
 cp "$SCRIPT_DIR/files/panel.html" "$BIN_DIR/panel.html"
+# 视频作者个人用的规则条目名单（rules-update 按它分离）
+tr -d '\r' < "$SCRIPT_DIR/files/personal-rules.txt" > "$BIN_DIR/personal-rules.txt"
 rm -f "$HOME_DIR/ui/litebox/index.html"
 /usr/bin/litebox panel-sync
 # 路由器后台（LuCI 21.02 及以后）加一个「服务 → LiteBox」页面：填订阅、看状态、打开面板。
@@ -484,10 +458,14 @@ uci set firewall.litebox_inc.path="$BIN_DIR/firewall.sh"
 uci set firewall.litebox_inc.reload=1
 uci commit firewall
 /etc/init.d/firewall reload >/dev/null 2>&1
+# 访客网络、Docker 等其他能上网的区域也放行到 litebox（内核的 TUN 路由会把它们的流量也带进来，不放行就断网）
+/usr/bin/litebox zones-sync
 
 touch /etc/crontabs/root
 sed -i '/# litebox$/d' /etc/crontabs/root
-echo '*/5 * * * * /usr/bin/litebox watchdog # litebox' >> /etc/crontabs/root
+echo "*/$WATCHDOG_MIN * * * * /usr/bin/litebox watchdog # litebox" >> /etc/crontabs/root
+# 分流规则每天凌晨 4 点多校验后更新（分钟数按密钥错开，免得所有路由器同一时刻去下载）
+echo "$(( 0x$(echo "$SECRET" | cut -c1-2) % 60 )) 4 * * * /usr/bin/litebox rules-update >/dev/null 2>&1 # litebox" >> /etc/crontabs/root
 /etc/init.d/cron restart >/dev/null 2>&1
 
 /etc/init.d/litebox enable
@@ -496,8 +474,17 @@ LAN_IP=$(uci -q get network.lan.ipaddr)
 LAN_IP=${LAN_IP%%/*}
 LAN_IP=${LAN_IP:-192.168.8.1}
 echo
+# 加速层能不能完整工作（缺 ipset / ip-full、或者是 fw4 时降级，醒目提示原因和补装命令）
+ACCEL_INFO=$(/usr/bin/litebox accel-check 2>/dev/null)
+show_accel() {
+	[ -n "$ACCEL_INFO" ] || return 0
+	echo
+	echo "$ACCEL_INFO" | sed 's/^/  /'
+}
+
 if grep -q "$SUB_PLACEHOLDER" "$CONFIG"; then
 	info "安装完成，但还没有填订阅，所以暂不启动（网络不受影响）。"
+	show_accel
 	echo
 	echo "┌───────────────────── 下一步：填机场订阅地址 ─────────────────────┐"
 	if [ "$LUCI" = 1 ]; then
@@ -529,6 +516,15 @@ if [ "$ok" = 0 ]; then
 	die "已恢复直连，网络不受影响。把 litebox log 的输出发出来求助。"
 fi
 info "安装完成，已启动。"
+# 有规则文件没下载到（比如离线安装）：现在内核起来了，在后台经它的代理补下载
+for f in $(sed -n 's#^    path: \./\(rules/[^ ]*\)$#\1#p' "$CONFIG"); do
+	if [ ! -s "$HOME_DIR/$f" ]; then
+		info "有分流规则没下载到，正在后台经代理补下载（litebox doctor 可以查看）"
+		(/usr/bin/litebox rules-update >/dev/null 2>&1 &)
+		break
+	fi
+done
+show_accel
 cat <<EOF
 
   一键登录面板：http://$LAN_IP:$PANEL_PORT/ui/#/setup?hostname=$LAN_IP&port=$PANEL_PORT&secret=$SECRET

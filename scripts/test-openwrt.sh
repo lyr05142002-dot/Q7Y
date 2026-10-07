@@ -37,6 +37,71 @@ curl -fsSL --retry 3 -o "$WORK/cn_ip.list" "https://raw.githubusercontent.com/Me
 mkdir -p "$WORK/sub"
 printf 'proxies:\n  - {name: test, type: socks5, server: 127.0.0.1, port: 9}\n' > "$WORK/sub/sub.yaml"
 
+# 规则下载校验用的样本：出错网页、空文件、正常名单、只剩几行的名单、带作者个人条目的直连名单
+mkdir -p "$WORK/sub/rules"
+printf '<!DOCTYPE html>\n<html><head><title>502 Bad Gateway</title></head><body>error</body></html>\n' > "$WORK/sub/rules/bad.html"
+: > "$WORK/sub/rules/empty.list"
+printf 'DOMAIN-SUFFIX,grok.com\nDOMAIN-SUFFIX,x.ai\nDOMAIN,new.example\n' > "$WORK/sub/rules/good.list"
+printf 'DOMAIN-SUFFIX,a.example\nDOMAIN-SUFFIX,b.example\nDOMAIN-SUFFIX,c.example\n' > "$WORK/sub/rules/short.list"
+cat > "$WORK/sub/rules/direct.list" <<'EOF'
+# MyList
+DOMAIN-SUFFIX,angeworld.cc
+DOMAIN-SUFFIX,jlip.cc
+# VPS
+IP-CIDR,216.40.86.112/24,no-resolve
+IP-CIDR,223.5.5.5/32,no-resolve
+DOMAIN-SUFFIX,bilibili.com
+DOMAIN-SUFFIX,qq.com
+DOMAIN-KEYWORD,baidu
+EOF
+cat > "$WORK/rules-test.yaml" <<'EOF'
+rule-providers:
+  t_html:
+    type: file
+    behavior: classical
+    format: text
+    url: http://127.0.0.1:8765/rules/bad.html
+    path: ./rules/t_html.list
+  t_empty:
+    type: file
+    behavior: classical
+    format: text
+    url: http://127.0.0.1:8765/rules/empty.list
+    path: ./rules/t_empty.list
+  t_short:
+    type: file
+    behavior: classical
+    format: text
+    url: http://127.0.0.1:8765/rules/short.list
+    path: ./rules/t_short.list
+  t_good:
+    type: file
+    behavior: classical
+    format: text
+    url: http://127.0.0.1:8765/rules/good.list
+    path: ./rules/t_good.list
+  t_mrs:
+    type: file
+    behavior: domain
+    format: mrs
+    url: http://127.0.0.1:8765/rules/good.list
+    path: ./rules/t_mrs.mrs
+  lb_direct:
+    type: file
+    behavior: classical
+    format: text
+    url: http://127.0.0.1:8765/rules/direct.list
+    path: ./rules/t_direct.list
+rules:
+  - MATCH,DIRECT
+EOF
+# litebox update 校验用的假 Release：一个正常的、一个 get.sh 被改过的
+mkdir -p "$WORK/sub/rel" "$WORK/sub/relbad"
+printf '#!/bin/sh\necho "STUB_GETSH_RAN $*"\n' > "$WORK/sub/rel/get.sh"
+(cd "$WORK/sub/rel" && sha256sum get.sh > SHA256SUMS)
+cp "$WORK/sub/rel/SHA256SUMS" "$WORK/sub/relbad/SHA256SUMS"
+printf '#!/bin/sh\necho "STUB_GETSH_RAN tampered"\n' > "$WORK/sub/relbad/get.sh"
+
 # 本地没有才拉取；Docker Hub 偶尔限流（429），重试几次
 pull() {
 	docker image inspect "$1" >/dev/null 2>&1 && return 0
@@ -68,6 +133,7 @@ run_round() { # 名字 docker网络参数
 	sleep 8
 	docker cp "$PKG" "$c:/root/litebox"
 	docker cp "$WORK/sub" "$c:/root/sub"
+	docker cp "$WORK/rules-test.yaml" "$c:/root/rules-test.yaml"
 	x() { docker exec "$c" sh -c "$1"; }
 	x 'uhttpd -p 127.0.0.1:8765 -h /root/sub'
 	x 'mkdir -p /etc/crontabs; /etc/init.d/cron enable; /etc/init.d/cron start' >/dev/null 2>&1 || true
@@ -80,6 +146,11 @@ run_round() { # 名字 docker网络参数
 
 	check "服务在运行" x 'litebox status | grep -q 运行中'
 	check "配置检查通过" x 'litebox check'
+	# 这个镜像没有 ipset：安装结尾和 status 都要醒目提示降级模式和补装命令
+	if echo "$out" | grep -q '当前为降级模式'; then ok "安装结尾提示降级模式"; else bad "安装结尾提示降级模式"; fi
+	check "status 显示降级原因和补装命令" x 'litebox status | grep -q "当前为降级模式" && litebox status | grep -q "原因：.*没有 ipset" && litebox status | grep -q "opkg install ipset"'
+	check "规则集都是 type: file（内核不自己下载）" x 'sed -n "/^rule-providers:/,/^rules:/p" /etc/litebox/config.yaml | grep -q "type: file" && ! sed -n "/^rule-providers:/,/^rules:/p" /etc/litebox/config.yaml | grep -q "type: http"'
+	check "规则每天校验后更新的定时任务" x 'grep -q "^[0-9]* 4 \* \* \* /usr/bin/litebox rules-update" /etc/crontabs/root'
 	check "DNS 已交给内核" x 'uci -q get dhcp.@dnsmasq[0].server | grep -q "127.0.0.1#1053"'
 	check "fake-ip 解析" x 'nslookup example.com 127.0.0.1 | grep -q "198\.18\."'
 	check "虚拟网卡 litebox0" x 'ip link show litebox0'
@@ -95,6 +166,36 @@ run_round() { # 名字 docker网络参数
 	check "粘贴时带的空格和引号会去掉" x 'litebox sub "  \"http://127.0.0.1:8765/sub.yaml?p=1\"  " --no-wait && [ "$(litebox sub)" = "http://127.0.0.1:8765/sub.yaml?p=1" ]'
 	check "不是网址的订阅会被拒绝" x '! litebox sub "abc" && [ "$(litebox sub)" = "http://127.0.0.1:8765/sub.yaml?p=1" ]'
 	x 'litebox sub "http://127.0.0.1:8765/sub.yaml?token=SECRET&a=it'"'"'s" --no-wait' >/dev/null 2>&1 || true
+	# 规则下载校验：网页、空文件、少一半以上、不是 mrs 的都不替换，旧文件原样保留；正常的照常更新
+	x 'cd /etc/litebox/rules && printf "DOMAIN-SUFFIX,old.example\n" > t_html.list && printf "DOMAIN-SUFFIX,old.example\n" > t_empty.list && for i in $(seq 1 40); do echo "DOMAIN-SUFFIX,s$i.example"; done > t_short.list && printf "OLD" > t_mrs.mrs && rm -f t_good.list t_direct.list && litebox rules-update --from /root/rules-test.yaml' >/dev/null 2>&1 || true
+	check "规则：下载到出错网页时不替换，旧规则保留" x 'grep -qx "DOMAIN-SUFFIX,old.example" /etc/litebox/rules/t_html.list'
+	check "规则：下载到空文件时不替换" x 'grep -qx "DOMAIN-SUFFIX,old.example" /etc/litebox/rules/t_empty.list'
+	check "规则：比上一版少一半以上时不替换" x '[ "$(grep -c . /etc/litebox/rules/t_short.list)" = 40 ]'
+	check "规则：格式不对的 mrs 不替换" x '[ "$(cat /etc/litebox/rules/t_mrs.mrs)" = OLD ]'
+	check "规则：正常的名单照常更新" x 'grep -qx "DOMAIN,new.example" /etc/litebox/rules/t_good.list'
+	check "规则：更新结果写进日志" x 'tail -n 1 /etc/litebox/rules-update.log | grep -q "没更新（继续用旧版）.*t_html（下载到的是网页" && tail -n 1 /etc/litebox/rules-update.log | grep -q "t_empty（下载到的是空文件）"'
+	check "个人条目：从直连名单里分出去" x '! grep -qi "angeworld\|jlip.cc\|216.40.86" /etc/litebox/rules/t_direct.list && grep -q "bilibili.com" /etc/litebox/rules/t_direct.list && grep -q "223.5.5.5" /etc/litebox/rules/t_direct.list'
+	check "个人条目：放进单独的文件" x 'grep -q "angeworld.cc" /etc/litebox/rules/personal_direct.list && grep -q "216.40.86.112" /etc/litebox/rules/personal_direct.list && ! grep -q "223.5.5.5" /etc/litebox/rules/personal_direct.list'
+	check "个人条目：默认不启用" x 'litebox personal | grep -q 未启用 && ! grep -q "^  - RULE-SET,personal_direct" /etc/litebox/config.yaml'
+	check "个人条目：litebox personal on / off" x 'litebox personal on >/dev/null && grep -q "^  - RULE-SET,personal_direct,DIRECT" /etc/litebox/config.yaml && litebox check >/dev/null && litebox personal off >/dev/null && ! grep -q "^  - RULE-SET,personal_direct" /etc/litebox/config.yaml'
+	if [ "$name" = online ] && [ -z "${CI:-}" ] && ! x '[ -s /etc/litebox/rules/lb_direct.list ]'; then
+		echo "  - 跳过「真实名单里没有作者个人条目」：这台机器的容器连不上 GitHub（GitHub Actions 上会严格检查）"
+	elif [ "$name" = online ]; then
+		# 能上网的这一轮下载的是作者真实的名单：默认规则里要搜不到他的个人条目
+		check "全新安装的默认规则里没有作者个人条目（真实名单）" x '[ -s /etc/litebox/rules/lb_direct.list ] && [ -s /etc/litebox/rules/lb_proxy.list ] && ! grep -qi "angeworld\|jlip.cc\|wan.family\|ssrdog\|216.40.86\|219.146.1.66\|142.171.133" /etc/litebox/rules/lb_direct.list /etc/litebox/rules/lb_proxy.list'
+	fi
+	# litebox update：先核对 get.sh 的 SHA256，对不上不运行
+	check "update：校验通过才运行安装脚本" x 'LB_RELEASE_URL=http://127.0.0.1:8765/rel litebox update --yes 2>&1 | grep -q "STUB_GETSH_RAN --yes"'
+	check "update：安装脚本被改过时拒绝运行" x 'out=$(LB_RELEASE_URL=http://127.0.0.1:8765/relbad litebox update 2>&1); echo "$out" | grep -q "校验不通过" && ! echo "$out" | grep -q STUB_GETSH_RAN'
+	# 看门狗间隔可以改，升级后保留（后面覆盖安装时检查）
+	check "看门狗间隔可以改" x 'litebox watchdog-interval 10 >/dev/null && grep -q "^\*/10 \* \* \* \* /usr/bin/litebox watchdog # litebox$" /etc/crontabs/root && grep -q "^WATCHDOG_MIN=10$" /etc/litebox/litebox.conf && [ "$(grep -c "litebox watchdog" /etc/crontabs/root)" = 1 ]'
+	check "看门狗间隔超出范围时拒绝" x '! litebox watchdog-interval 0 && ! litebox watchdog-interval 61 && grep -q "^WATCHDOG_MIN=10$" /etc/litebox/litebox.conf'
+	# 访客网络等能上网的区域：放行到 litebox，否则会被 TUN 路由带进来后挡掉、整个断网
+	x 'uci set firewall.tguest=zone; uci set firewall.tguest.name=guest; uci set firewall.tguestfwd=forwarding; uci set firewall.tguestfwd.src=guest; uci set firewall.tguestfwd.dest=wan; uci commit firewall; litebox zones-sync' >/dev/null 2>&1 || true
+	check "访客区域自动放行到 litebox" x '[ "$(uci -q get firewall.litebox_fwd_guest.src)" = guest ] && [ "$(uci -q get firewall.litebox_fwd_guest.dest)" = litebox ]'
+	x 'uci delete firewall.tguestfwd; uci commit firewall; litebox zones-sync' >/dev/null 2>&1 || true
+	check "访客区域不再能上网时撤掉放行" x '! uci -q get firewall.litebox_fwd_guest'
+	x 'uci set firewall.tguestfwd=forwarding; uci set firewall.tguestfwd.src=guest; uci set firewall.tguestfwd.dest=wan; uci commit firewall; litebox zones-sync' >/dev/null 2>&1 || true
 	check "luci-status 输出合法 JSON" x 'litebox luci-status | jsonfilter -e "@.running" | grep -q true && litebox luci-status | jsonfilter -e "@.sub" | grep -q "^http://127.0.0.1:8765/"'
 	# 这个镜像自带 LuCI 21.02：后台页面要装上，菜单和权限文件要是合法 JSON
 	check "LuCI 后台页面装上了" x '[ -f /www/luci-static/resources/view/litebox.js ] && jsonfilter -i /usr/share/luci/menu.d/luci-app-litebox.json -e "@[\"admin/services/litebox\"].action.path" | grep -qx litebox && jsonfilter -i /usr/share/rpcd/acl.d/luci-app-litebox.json -e "@[\"luci-app-litebox\"].write.file" >/dev/null'
@@ -124,10 +225,14 @@ run_round() { # 名字 docker网络参数
 
 	local secret
 	secret=$(x '. /etc/litebox/litebox.conf; echo $SECRET')
+	# 模拟 v0.6 及以前的配置：规则集是 type: http（内核自己下载、不校验）
+	x 'sed -i "/^rule-providers:/,/^rules:/ s/^    type: file$/    type: http/" /etc/litebox/config.yaml' || true
 	out=$(x 'sh /root/litebox/install.sh < /dev/null 2>&1') || true
 	if echo "$out" | grep -q '安装完成'; then ok "覆盖安装（升级）"; else bad "覆盖安装（升级）"; echo "$out" | tail -5; fi
 	check "升级保留面板密钥" x '[ "$(. /etc/litebox/litebox.conf; echo $SECRET)" = "'"$secret"'" ]'
-	check "升级不重复加定时任务" x '[ "$(grep -c "litebox watchdog" /etc/crontabs/root)" = 1 ]'
+	check "升级不重复加定时任务" x '[ "$(grep -c "litebox watchdog" /etc/crontabs/root)" = 1 ] && [ "$(grep -c "litebox rules-update" /etc/crontabs/root)" = 1 ]'
+	check "升级保留看门狗间隔" x 'grep -q "^\*/10 \* \* \* \* /usr/bin/litebox watchdog # litebox$" /etc/crontabs/root && grep -q "^WATCHDOG_MIN=10$" /etc/litebox/litebox.conf'
+	check "升级时旧配置的规则集改成 type: file，并留备份" x '! sed -n "/^rule-providers:/,/^rules:/p" /etc/litebox/config.yaml | grep -q "type: http" && grep -q "^    type: http$" /etc/litebox/config.yaml.pre-0.7 && litebox check'
 	out=$(x 'sh /root/litebox/install.sh --reset-config < /dev/null 2>&1') || true
 	check "--reset-config 保留订阅" x '[ "$(litebox sub)" = "http://127.0.0.1:8765/sub.yaml?token=SECRET&a=it'"'"'s" ]'
 	check "--reset-config 留下旧配置备份" x '[ -f /etc/litebox/config.yaml.old ]'
@@ -138,7 +243,7 @@ run_round() { # 名字 docker网络参数
 	x 'litebox uninstall --purge' >/dev/null 2>&1 || true
 	check "卸载后服务和文件清除" x '[ ! -e /etc/litebox ] && [ ! -e /usr/bin/litebox ] && ! pidof mihomo'
 	check "卸载后 DNS 还原" x '! uci -q get dhcp.@dnsmasq[0].server | grep -q 1053'
-	check "卸载后防火墙还原" x '! uci show firewall | grep -q litebox'
+	check "卸载后防火墙还原（含访客区域的放行）" x '! uci show firewall | grep -q litebox'
 	check "卸载后 LuCI 页面删掉" x '[ ! -e /www/luci-static/resources/view/litebox.js ] && [ ! -e /usr/share/luci/menu.d/luci-app-litebox.json ] && [ ! -e /usr/share/rpcd/acl.d/luci-app-litebox.json ]'
 	docker rm -f "$c" >/dev/null
 }
@@ -235,6 +340,20 @@ run_ipset() {
 	check "mangle 给国内 IP 打标记" x 'iptables -w -t mangle -S LITEBOX_MARK | grep -q "match-set litebox_cn dst"'
 	check "nat 转发 TCP，国内 IP 跳过" x 'iptables -w -t nat -S LITEBOX_NAT | grep -q "match-set litebox_cn dst -j RETURN" && iptables -w -t nat -S LITEBOX_NAT | grep -q "REDIRECT --to-ports 7892"'
 	check "doctor 显示加速生效" x 'litebox doctor | grep -q "国内 IP 直连，不进内核"'
+	# 验收：下载到出错网页时，内核里正在用的规则不变；正常更新时只重读这一个规则集，内核不重启。
+	# 用只含 lb_grok 的配置跑更新（容器断网，完整配置里的其他规则下载会先失败，连续失败两次就跳过后面的）
+	x '. /etc/litebox/litebox.conf
+		printf "rule-providers:\n  lb_grok:\n    type: file\n    behavior: classical\n    format: text\n    url: http://127.0.0.1:8765/rules/bad.html\n    path: ./rules/lb_grok.list\nrules:\n  - MATCH,DIRECT\n" > /root/grok-test.yaml
+		printf "DOMAIN-SUFFIX,grok.com\nDOMAIN-SUFFIX,x.ai\n" > /etc/litebox/rules/lb_grok.list
+		curl -s -X PUT -H "Authorization: Bearer $SECRET" http://127.0.0.1:9090/providers/rules/lb_grok
+		pidof mihomo > /tmp/pid.before; litebox rules-update --from /root/grok-test.yaml' >/dev/null 2>&1 || true
+	check "验收：下载到出错网页后，内核里的规则不变" x '. /etc/litebox/litebox.conf; [ "$(curl -s -H "Authorization: Bearer $SECRET" http://127.0.0.1:9090/providers/rules | jsonfilter -e "@.providers.lb_grok.ruleCount")" = 2 ] && grep -qx "DOMAIN-SUFFIX,x.ai" /etc/litebox/rules/lb_grok.list && tail -n 1 /etc/litebox/rules-update.log | grep -q "lb_grok（下载到的是网页"'
+	x 'sed -i "s#/rules/bad.html#/rules/good.list#" /root/grok-test.yaml; litebox rules-update --from /root/grok-test.yaml' >/dev/null 2>&1 || true
+	check "验收：正常更新后内核用上新规则，没有重启" x '. /etc/litebox/litebox.conf; [ "$(curl -s -H "Authorization: Bearer $SECRET" http://127.0.0.1:9090/providers/rules | jsonfilter -e "@.providers.lb_grok.ruleCount")" = 3 ] && [ "$(pidof mihomo)" = "$(cat /tmp/pid.before)" ]'
+	check "加速完整时 status 不提示降级" x 'litebox status | grep -q "加速：完整" && ! litebox status | grep -q 降级'
+	x 'mv /usr/sbin/ipset /usr/sbin/ipset.off' || true
+	check "卸掉 ipset 后 status 醒目提示降级模式" x 'litebox status | grep -q "当前为降级模式" && litebox status | grep -q "opkg install ipset"'
+	x 'mv /usr/sbin/ipset.off /usr/sbin/ipset' || true
 	check "老版本 LuCI（18.06，没有 menu.d）不装后台页面" x '[ ! -e /www/luci-static/resources/view/litebox.js ] && [ ! -e /usr/share/luci/menu.d/luci-app-litebox.json ]'
 	# 面板首页已在（上面放的占位文件），概览页必须到位
 	check "概览页放进了面板目录" x '[ -f /etc/litebox/ui/litebox/index.html ] && [ -L /etc/litebox/ui/litebox/traffic.txt ]'

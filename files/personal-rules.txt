@@ -1,0 +1,115 @@
+# 视频作者个人用的规则条目：litebox 下载 liandu2024/clash 的直连（Direct.list）、代理（Proxy.list）名单时，
+# 把这些条目从默认规则里拿出来，放进 rules/personal_direct.list、rules/personal_proxy.list，默认不启用。
+# 想用：litebox personal on（关：litebox personal off）。
+#
+# 怎么算「个人条目」：
+#   1. 作者自己的网站、他用的机场 / VPN 的订阅和面板域名（名单里 MyList、快猫、小牛、ssrdog 等段落）
+#   2. 这两个名单里的所有 IP-CIDR（作者的 VPS、宽带 DNS 和一批单独的 IP 段），下面 KEEP 开头的公共 DNS 除外
+# 拿掉它们不影响普通用户：国内网站另有 cn_site / cn_ip 名单直连，境外的没匹配上也会走「🐟 漏网之鱼」（默认走代理）。
+#
+# 写法：一行一条，和名单里的写法一样（不区分大小写，no-resolve 等参数不用写）。作者以后新加的个人域名不会自动认出来，
+# 发现了可以加到这里（升级时这个文件会被新版覆盖，自己加的请提 issue 或改 /usr/lib/litebox/personal-rules.txt）。
+
+# ---- 保留在默认规则里的公共 DNS 和网段 ----
+KEEP IP-CIDR,119.29.29.29/32
+KEEP IP-CIDR,223.5.5.5/32
+KEEP IP-CIDR,223.6.6.6/32
+KEEP IP-CIDR,180.76.76.76/32
+KEEP IP-CIDR,114.114.114.114/32
+KEEP IP-CIDR,114.114.115.115/32
+KEEP IP-CIDR,8.8.8.8/32
+KEEP IP-CIDR,8.8.4.4/32
+KEEP IP-CIDR,1.1.1.1/32
+KEEP IP-CIDR,1.0.0.1/32
+KEEP IP-CIDR,185.222.222.222/32
+KEEP IP-CIDR,208.67.222.222/32
+KEEP IP-CIDR,208.67.220.220/32
+KEEP IP-CIDR,142.250.0.0/16
+
+# ---- 直连名单 MyList 段：作者的网站、他用的机场域名 ----
+DOMAIN-SUFFIX,whtjdasha.com
+DOMAIN-SUFFIX,chybinc.com
+DOMAIN-SUFFIX,gfw.gg
+DOMAIN-SUFFIX,moedog.cloud
+DOMAIN-SUFFIX,wanhouse.cc
+DOMAIN-SUFFIX,wan.family
+DOMAIN-SUFFIX,angeworld.top
+DOMAIN-SUFFIX,angeworld.cc
+DOMAIN-SUFFIX,jlip.cc
+DOMAIN-SUFFIX,tutu.pm
+DOMAIN-SUFFIX,aerianas.top
+DOMAIN-SUFFIX,sssyun.xyz
+DOMAIN-SUFFIX,qeayr.cn
+DOMAIN-SUFFIX,saojc.xyz
+DOMAIN-SUFFIX,dler.cloud
+DOMAIN-SUFFIX,0tk8a3a1q4t94dler.com
+DOMAIN-SUFFIX,hkmlqxg.xyz
+DOMAIN-SUFFIX,qingtiantv888.xyz
+DOMAIN-SUFFIX,ynhtbank.com
+DOMAIN-SUFFIX,juhyb.com
+DOMAIN-SUFFIX,yylx.win
+DOMAIN-SUFFIX,0033cas.com
+DOMAIN-SUFFIX,asyncdata.net
+DOMAIN-SUFFIX,2akribis.com
+DOMAIN-SUFFIX,ok1248.cn
+DOMAIN-SUFFIX,gying.net
+DOMAIN-SUFFIX,51zmt.top
+DOMAIN-SUFFIX,idsduf.com
+DOMAIN-SUFFIX,apple-bing.sbs
+DOMAIN-SUFFIX,xiaoniuyun.cc
+DOMAIN-SUFFIX,vp2.us
+DOMAIN-SUFFIX,km688.ink
+DOMAIN-SUFFIX,futo-on.com
+DOMAIN-SUFFIX,quickcht3.club
+DOMAIN-SUFFIX,kuaimao2.club
+DOMAIN-SUFFIX,kuaimaonodebgp.com
+DOMAIN-SUFFIX,onesubv.site
+DOMAIN-SUFFIX,oneyyds.online
+DOMAIN-SUFFIX,zhunchuanpb.com
+DOMAIN-SUFFIX,sevenka.top
+DOMAIN-SUFFIX,maocf1.top
+DOMAIN-SUFFIX,prosubnet02.eu
+DOMAIN-SUFFIX,networklinkpro.net
+DOMAIN-SUFFIX,4yfu73r3a4kl.com
+DOMAIN-SUFFIX,xiaoniuyun11.com
+DOMAIN-SUFFIX,oxeuro.xyz
+DOMAIN-SUFFIX,v140oy1s.xyz
+DOMAIN-SUFFIX,s86lk.info
+DOMAIN-SUFFIX,s86lk.space
+DOMAIN-SUFFIX,huawei-cloud.shop
+DOMAIN-SUFFIX,huawei-cloud.vip
+DOMAIN-SUFFIX,gpt-agent.cc
+DOMAIN-SUFFIX,polybase.sbs
+DOMAIN-SUFFIX,acwct.cn
+DOMAIN-SUFFIX,472361.xyz
+DOMAIN-SUFFIX,xxqqx.cn
+DOMAIN-SUFFIX,stga.cn
+DOMAIN-SUFFIX,bingyun.ink
+DOMAIN-SUFFIX,fafhjkah.xyz
+DOMAIN-SUFFIX,66jc.top
+DOMAIN-SUFFIX,swmixx.cn
+DOMAIN-SUFFIX,jueduibupao.top
+DOMAIN-SUFFIX,alipoly.sbs
+DOMAIN-SUFFIX,networklinkpro.com
+DOMAIN-SUFFIX,YOUSUTONG.XYZ
+DOMAIN-SUFFIX,izenny.com
+DOMAIN-SUFFIX,1yuan.sbs
+
+# ---- 代理名单里作者用的机场 / VPN 域名 ----
+DOMAIN-SUFFIX,ssrdog222.com
+DOMAIN-SUFFIX,hosbbq.com
+DOMAIN-SUFFIX,ssrdog7.com
+DOMAIN-SUFFIX,ssrdog8.com
+DOMAIN-SUFFIX,ssrdog9.com
+DOMAIN-SUFFIX,ssrdog.com
+DOMAIN-SUFFIX,vns735p8.xyz
+DOMAIN-SUFFIX,i4z65c0h.xyz
+DOMAIN-SUFFIX,v140oy1s.xyz
+DOMAIN-SUFFIX,tcb54710.xyz
+DOMAIN-SUFFIX,ednovas.tech
+DOMAIN-SUFFIX,6bcloud.top
+DOMAIN-SUFFIX,lianjiasub.work
+DOMAIN-SUFFIX,muniucloud.pro
+DOMAIN-SUFFIX,69yun.top
+DOMAIN-SUFFIX,wallvpn.com
+DOMAIN-SUFFIX,lightningxvpn.com

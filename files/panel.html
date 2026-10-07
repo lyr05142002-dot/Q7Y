@@ -714,6 +714,7 @@ const SET_NAMES = {
 	lb_direct: "直连域名", lb_proxy: "代理域名", lb_ai: "AI 服务", lb_claude: "Claude", lb_chatgpt: "ChatGPT", lb_gemini: "Gemini", lb_copilot: "Copilot", lb_grok: "Grok",
 	cn_site: "国内网站", cn_ip: "国内 IP", ms_youtube: "YouTube", ms_netflix: "Netflix", ms_google: "Google", ms_github: "GitHub", ms_telegram: "Telegram",
 	ms_twitter: "X / Twitter", ms_tiktok: "TikTok", ms_telegram_ip: "Telegram IP",
+	personal_direct: "作者个人条目（直连）", personal_proxy: "作者个人条目（代理）",
 };
 function ruleName(type, payload) {
 	if (/^RuleSet$/i.test(type)) return (SET_NAMES[payload] ? SET_NAMES[payload] + " · " : "") + payload;

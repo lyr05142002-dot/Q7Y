@@ -273,154 +273,141 @@ proxy-groups:
 
 # lb_* 来自视频作者的域名集 https://github.com/liandu2024/clash/tree/main/list
 # cn_* 来自 MetaCubeX/meta-rules-dat（mrs 二进制格式，比 GeoSite 数据库省内存得多）
-# 规则文件由 install.sh 预先下载到 rules/，之后每天通过代理自动更新
+# 规则集都是 type: file：内核只读本地文件、不自己下载。下载由 litebox rules-update 负责（每天凌晨自动跑）：
+# 按 url 下载（proxy 写了走代理的经内核代理下载），校验格式和大小，通过了才替换文件，不通过继续用旧版。
+# lb_direct、lb_proxy 里视频作者个人用的条目会被分到 personal_direct、personal_proxy（默认不启用）
 rule-providers:
   lb_direct:
-    type: http
+    type: file
     behavior: classical
     format: text
     url: https://raw.githubusercontent.com/liandu2024/clash/main/list/Direct.list
     path: ./rules/lb_direct.list
-    interval: 86400
     proxy: 🚀 节点选择
   lb_ai:
-    type: http
+    type: file
     behavior: classical
     format: text
     url: https://raw.githubusercontent.com/liandu2024/clash/main/list/AI.list
     path: ./rules/lb_ai.list
-    interval: 86400
     proxy: 🚀 节点选择
   lb_claude:
-    type: http
+    type: file
     behavior: classical
     format: text
     url: https://raw.githubusercontent.com/liandu2024/clash/main/list/Claude.list
     path: ./rules/lb_claude.list
-    interval: 86400
     proxy: 🚀 节点选择
   lb_chatgpt:
-    type: http
+    type: file
     behavior: classical
     format: text
     url: https://raw.githubusercontent.com/liandu2024/clash/main/list/ChatGPT.list
     path: ./rules/lb_chatgpt.list
-    interval: 86400
     proxy: 🚀 节点选择
   lb_gemini:
-    type: http
+    type: file
     behavior: classical
     format: text
     url: https://raw.githubusercontent.com/liandu2024/clash/main/list/Gemini.list
     path: ./rules/lb_gemini.list
-    interval: 86400
     proxy: 🚀 节点选择
   lb_copilot:
-    type: http
+    type: file
     behavior: classical
     format: text
     url: https://raw.githubusercontent.com/liandu2024/clash/main/list/Copilot.list
     path: ./rules/lb_copilot.list
-    interval: 86400
     proxy: 🚀 节点选择
   lb_grok:
-    type: http
+    type: file
     behavior: classical
     format: text
     url: https://raw.githubusercontent.com/liandu2024/clash/main/list/Grok.list
     path: ./rules/lb_grok.list
-    interval: 86400
     proxy: 🚀 节点选择
   lb_proxy:
-    type: http
+    type: file
     behavior: classical
     format: text
     url: https://raw.githubusercontent.com/liandu2024/clash/main/list/Proxy.list
     path: ./rules/lb_proxy.list
-    interval: 86400
     proxy: 🚀 节点选择
   # 常用境外服务，来自 MetaCubeX/meta-rules-dat
   ms_youtube:
-    type: http
+    type: file
     behavior: domain
     format: mrs
     url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/youtube.mrs
     path: ./rules/ms_youtube.mrs
-    interval: 86400
     proxy: 🚀 节点选择
   ms_netflix:
-    type: http
+    type: file
     behavior: domain
     format: mrs
     url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/netflix.mrs
     path: ./rules/ms_netflix.mrs
-    interval: 86400
     proxy: 🚀 节点选择
   ms_google:
-    type: http
+    type: file
     behavior: domain
     format: mrs
     url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/google.mrs
     path: ./rules/ms_google.mrs
-    interval: 86400
     proxy: 🚀 节点选择
   ms_github:
-    type: http
+    type: file
     behavior: domain
     format: mrs
     url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/github.mrs
     path: ./rules/ms_github.mrs
-    interval: 86400
     proxy: 🚀 节点选择
   ms_telegram:
-    type: http
+    type: file
     behavior: domain
     format: mrs
     url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/telegram.mrs
     path: ./rules/ms_telegram.mrs
-    interval: 86400
     proxy: 🚀 节点选择
   ms_telegram_ip:
-    type: http
+    type: file
     behavior: ipcidr
     format: mrs
     url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/telegram.mrs
     path: ./rules/ms_telegram_ip.mrs
-    interval: 86400
     proxy: 🚀 节点选择
   ms_twitter:
-    type: http
+    type: file
     behavior: domain
     format: mrs
     url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/twitter.mrs
     path: ./rules/ms_twitter.mrs
-    interval: 86400
     proxy: 🚀 节点选择
   ms_tiktok:
-    type: http
+    type: file
     behavior: domain
     format: mrs
     url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/tiktok.mrs
     path: ./rules/ms_tiktok.mrs
-    interval: 86400
     proxy: 🚀 节点选择
   cn_site:
-    type: http
+    type: file
     behavior: domain
     format: mrs
     url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/cn.mrs
     path: ./rules/cn_site.mrs
-    interval: 86400
     proxy: 🚀 节点选择
   # 文本格式：防火墙也用这份列表建 ipset
   cn_ip:
-    type: http
+    type: file
     behavior: ipcidr
     format: text
     url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/cn.list
     path: ./rules/cn_ip.list
-    interval: 86400
     proxy: 🚀 节点选择
+  # 视频作者个人用的条目（他的网站、他用的机场的域名、VPS 和宽带 IP），默认不启用。启用：litebox personal on
+  # personal_direct: {type: file, behavior: classical, format: text, path: ./rules/personal_direct.list} # LITEBOX_PERSONAL
+  # personal_proxy: {type: file, behavior: classical, format: text, path: ./rules/personal_proxy.list} # LITEBOX_PERSONAL
 
 rules:
   - DOMAIN-SUFFIX,lan,DIRECT
@@ -429,6 +416,7 @@ rules:
   - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
   - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
   - RULE-SET,lb_direct,DIRECT
+  # - RULE-SET,personal_direct,DIRECT # LITEBOX_PERSONAL
   # 屏蔽走代理的 QUIC（UDP 443）：浏览器会自动退回 TCP；节点转发 UDP 差时 YouTube 等反而更流畅。国内站点不受影响
   - AND,((NETWORK,UDP),(DST-PORT,443),(NOT,((RULE-SET,cn_site)))),REJECT # LITEBOX_QUIC（litebox quic on|off 切换）
   # 先按具体的 AI 名单分到各自分组（含它们要用的登录、静态资源域名）
@@ -448,6 +436,7 @@ rules:
   - RULE-SET,ms_tiktok,TikTok
   - RULE-SET,lb_ai,🤖 AI
   - RULE-SET,ms_telegram_ip,Telegram,no-resolve
+  # - RULE-SET,personal_proxy,🚀 节点选择 # LITEBOX_PERSONAL
   - RULE-SET,lb_proxy,🚀 节点选择
   - RULE-SET,cn_site,DIRECT
   # no-resolve：有域名的连接只按域名判断，不为了匹配 IP 段去解析每个境外域名（更快，也不会把境外域名发给国内 DNS）

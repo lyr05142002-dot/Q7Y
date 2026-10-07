@@ -46,12 +46,18 @@ fetch_verified "https://github.com/Zephyruso/zashboard/releases/download/$UI_VER
 	"$WORK/offline/litebox/$UI_ASSET" "$UI_SHA"
 (cd "$WORK/offline" && zip -qr "$DIST/litebox-arm64-offline.zip" litebox)
 
+# 一键安装的入口脚本也放进 Release：README 里推荐先下载它、核对 SHA256 再运行
+cp get.sh "$DIST/get.sh"
+
 # GPL-3.0 要求随二进制提供对应源码
 curl -fsSL --retry 3 -o "$DIST/mihomo-$MIHOMO_VER-source.tar.gz" \
 	"https://github.com/MetaCubeX/mihomo/archive/refs/tags/$MIHOMO_VER.tar.gz"
 
 cd "$DIST"
+# 每个文件一个 .sha256（get.sh 下载安装包时用），再加一个汇总的 SHA256SUMS
 for f in *; do
 	sha256sum "$f" > "$f.sha256"
 done
+sha256sum $(ls | grep -v '\.sha256$') > SHA256SUMS
+cat SHA256SUMS
 ls -l

@@ -1,8 +1,9 @@
 <!doctype html><meta charset="utf-8"><link rel="stylesheet" href="style.css">
 <div class="head"><div class="num">2</div><h1>粘贴一条命令，一路回车</h1><span class="tag">示意图 · 内容来自实际安装输出</span></div>
 <div class="term rel"><div class="bar"><i></i><i></i><i></i>&nbsp;root@192.168.8.1 · SSH</div>
-<pre><span class="p">root@GL-MT3600BE:~#</span> <span class="cmd">curl -fsSL https://raw.githubusercontent.com/lyr05142002-dot/Q7Y/main/get.sh | sh</span>
-<span class="ann">⬆ 复制这一整行，在 PowerShell 里<b>点右键粘贴</b>，回车</span>
+<pre><span class="p">root@GL-MT3600BE:~#</span> <span class="cmd">cd /tmp && curl -fsSLO https://github.com/lyr05142002-dot/Q7Y/releases/latest/download/get.sh && echo "509c335b…（README 里的完整校验值）  get.sh" | sha256sum -c - && sh get.sh</span>
+<span class="ann">⬆ 从 README 复制这一整行，在 PowerShell 里<b>点右键粘贴</b>，回车</span>
+get.sh: <span class="g">OK</span> <span class="ann">⬅ 安装脚本校验通过才会运行；显示 FAILED 会停下，什么都不装</span>
 [litebox] 下载 https://github.com/lyr05142002-dot/Q7Y/releases/latest/download/litebox.tar.gz
 [litebox] 系统：OpenWrt 21.02-SNAPSHOT，架构 aarch64（arm64），内存 481MB
 
@@ -38,5 +39,5 @@
 </div>
 <div class="row" style="margin-top:14px">
   <div class="note ok" style="flex:1">✅ <b>装不上也不会断网</b>：LiteBox 起不来时会自动切回原来的 OpenClash，或者恢复直连。</div>
-  <div class="note warn" style="flex:1">⚠️ 路由器打不开 GitHub 时：命令换成<br><code>curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/lyr05142002-dot/Q7Y/main/get.sh | sh -s -- --mirror https://ghfast.top</code>，还不行就用离线包（方式二）</div>
+  <div class="note warn" style="flex:1">⚠️ 路由器打不开 GitHub 时：用 README 里经镜像下载的那条命令（校验值不变，镜像站改不了内容），还不行就用离线包（方式二）</div>
 </div>

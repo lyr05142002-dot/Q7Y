@@ -21,7 +21,7 @@ TRAFFIC_LAST=/tmp/litebox-traffic.last
 OTHER_SVCS="openclash nikki mihomo passwall passwall2 shadowsocksr ssr-plus vssr bypass sing-box openbox homeproxy"
 LUCI_FILES="/www/luci-static/resources/view/litebox.js /usr/share/luci/menu.d/luci-app-litebox.json /usr/share/rpcd/acl.d/luci-app-litebox.json"
 
-PANEL_PORT=9090 MIXED_PORT=7890 SECRET="" MEM_SOFT_MB=100 MEM_HARD_MB=180
+PANEL_PORT=9090 MIXED_PORT=7890 SECRET="" MEM_SOFT_MB=100 MEM_HARD_MB=180 WATCHDOG_MIN=5
 [ -f "$CONF" ] && . "$CONF"
 
 die() { echo "litebox：$*" >&2; exit 1; }
@@ -41,10 +41,13 @@ usage() {
   route <域名>      路由器实际访问一次，看 DNS、命中的规则和走的线路
   direct            紧急恢复直连（停止并禁用开机自启）
   enable            重新启用（开机自启并启动），和 direct 相反
-  update [--mirror URL]  升级到最新版（配置和订阅保留）
+  update [--mirror URL]  升级到最新版（配置和订阅保留；先校验安装脚本的 SHA256 再运行）
+  rules-update [--force]  立即更新分流规则（每天凌晨自动更新；校验不过就继续用旧版）
+  personal [on|off] 视频作者个人用的规则条目（默认不启用）
   accel [on|off]    查看或开关流量加速（国内 IP 不进内核、TCP 走 iptables 转发）
   quic on|off       屏蔽 / 放行走代理的 QUIC（默认屏蔽，YouTube 等更流畅）
   stack [system|gvisor|mixed]  查看或切换 TUN 协议栈（开着硬件加速出问题时试 gvisor）
+  watchdog-interval [分钟]  查看或修改看门狗的检查间隔（默认 5 分钟，可设 1–30）
   switch-back       停用 LiteBox，恢复安装时停用的代理插件（比如 OpenClash）
   uninstall [--purge]  卸载（--purge 同时删除配置和订阅）
 EOF
@@ -113,6 +116,44 @@ traffic_tick() { # 内核pid
 	fi
 }
 
+rules_missing() {
+	local f
+	for f in $(sed -n 's#^    path: \./\(rules/[^ ]*\)$#\1#p' "$CONFIG" 2>/dev/null); do
+		[ -s "$HOME_DIR/$f" ] || return 0
+	done
+	return 1
+}
+
+# 内核的 TUN 路由会把所有经路由器转发的流量（不只是 lan）送进 litebox0。防火墙只放行 lan → litebox 的话，
+# 访客网络、Docker 这些区域就整个断网了：凡是能转发到 wan 的区域，也放行到 litebox（按同样的规则分流）。
+# 安装时和每次启动时检查一遍，有变化才改防火墙配置；卸载时删掉
+zones_sync() {
+	local want="" have="" z src changed=0
+	for z in $(uci -q show firewall | sed -n 's/^firewall\.\([^.=]*\)=forwarding$/\1/p'); do
+		[ "$(uci -q get "firewall.$z.dest")" = wan ] || continue
+		src=$(uci -q get "firewall.$z.src")
+		case "$src" in ""|lan|litebox|*[!A-Za-z0-9_]*) continue ;; esac
+		want="$want $src"
+	done
+	have=$(uci -q show firewall | sed -n 's/^firewall\.litebox_fwd_\([A-Za-z0-9_]*\)=forwarding$/\1/p')
+	for z in $want; do
+		echo "$have" | grep -qx "$z" && continue
+		uci set "firewall.litebox_fwd_$z=forwarding"
+		uci set "firewall.litebox_fwd_$z.src=$z"
+		uci set "firewall.litebox_fwd_$z.dest=litebox"
+		changed=1
+	done
+	for z in $have; do
+		echo "$want" | tr ' ' '\n' | grep -qx "$z" && continue
+		uci -q delete "firewall.litebox_fwd_$z"
+		changed=1
+	done
+	[ "$changed" = 1 ] || return 0
+	uci commit firewall
+	/etc/init.d/firewall reload >/dev/null 2>&1
+	logger -t litebox "放行到 litebox 的区域：lan${want}"
+}
+
 check_config() {
 	"$BIN" -t -d "$HOME_DIR" -f "$CONFIG"
 }
@@ -166,7 +207,29 @@ cmd_status() {
 		echo "订阅：未设置（litebox sub '订阅地址'，或在路由器后台「服务 → LiteBox」里填）"
 	fi
 	[ -f "$DNS_BAK" ] && echo "DNS：已由内核接管" || echo "DNS：未接管"
+	accel_mode
 	show_panel
+}
+
+# 加速层能不能完整工作。降级时醒目地说明原因和补装命令（由 firewall.sh check 判断）；返回 1 = 降级
+accel_mode() {
+	local out rc reasons pkgs cmds
+	[ -x "$FW" ] || return 0
+	out=$("$FW" check 2>/dev/null)
+	rc=$?
+	case "$rc" in
+		0) echo "加速：完整（国内 IP 直连、不进内核，TCP 走 iptables 转发）"; return 0 ;;
+		2) echo "加速：已手动关闭，全部流量走 TUN（打开：litebox accel on）"; return 0 ;;
+	esac
+	reasons=$(echo "$out" | cut -d'|' -f1 | awk 'NF' | awk '{ printf "%s%s", (NR > 1 ? "；" : ""), $0 }')
+	pkgs=$(echo "$out" | sed -n 's/.*|pkg://p' | awk '{ printf " %s", $0 }')
+	cmds=$(echo "$out" | sed -n 's/.*|cmd://p' | awk '{ printf "%s%s", (NR > 1 ? "；" : ""), $0 }')
+	echo "！！ 当前为降级模式：国内流量也要经过内核，更费 CPU，大流量时可能卡（网络照常能用）"
+	echo "     原因：$reasons"
+	[ -n "$pkgs" ] && echo "     补装：opkg update && opkg install$pkgs，装好后执行 litebox restart"
+	[ -n "$cmds" ] && echo "     处理：$cmds"
+	[ -z "$pkgs$cmds" ] && echo "     这个系统没有补装办法，只能用 TUN 模式（OpenWrt 22.03 及以后都是 fw4）"
+	return 1
 }
 
 cmd_mem() {
@@ -295,6 +358,11 @@ cmd_watchdog() {
 	fi
 	panel_sync
 	traffic_tick "$pid"
+	# 有规则文件缺失或是空的（比如离线安装时没下载到），每小时在后台试着补一次
+	if rules_missing && [ $(( $(date +%s) - $(cat /tmp/litebox-rules.try 2>/dev/null || echo 0) )) -ge 3600 ]; then
+		date +%s > /tmp/litebox-rules.try
+		(/usr/bin/litebox rules-update >/dev/null 2>&1 &)
+	fi
 	rss=$(status_kb "$pid" VmRSS)
 	[ -n "$rss" ] || return 0
 	if [ "$((rss / 1024))" -gt "$MEM_HARD_MB" ]; then
@@ -333,7 +401,7 @@ api() { # 路径
 GROUP_MAIN=%F0%9F%9A%80%20%E8%8A%82%E7%82%B9%E9%80%89%E6%8B%A9
 
 cmd_doctor() {
-	local pid="" rss hwm out n f now code avail svc errs dns_up=0
+	local pid="" rss hwm out n f now code avail svc errs dns_up=0 last age
 	echo "LiteBox 自检（$(date '+%F %T')）"
 
 	echo
@@ -401,7 +469,19 @@ cmd_doctor() {
 	if [ "$n" -ge "$total" ]; then
 		d_ok "分流规则 $n 个文件"
 	else
-		d_warn "分流规则只有 $n/$total 个文件，缺的会在内核启动后经代理自动下载"
+		d_warn "分流规则只有 $n/$total 个文件，缺的看门狗每小时会经代理补下载"
+		d_hint "现在就补：litebox rules-update"
+	fi
+	if [ -s "$RULES_LOG" ]; then
+		last=$(tail -n 1 "$RULES_LOG")
+		age=$(( ($(date +%s) - $(date -d "$(echo "$last" | cut -c1-19)" +%s 2>/dev/null || date +%s)) / 86400 ))
+		case "$last" in
+			*没更新*|*跳过*) d_warn "规则上次更新有问题：$(echo "$last" | cut -c1-240)"; d_hint "旧规则照常在用；看完整记录：cat $RULES_LOG" ;;
+			*) if [ "$age" -ge 3 ]; then d_warn "规则 $age 天没更新了（每天凌晨自动更新）"; d_hint "litebox rules-update"; else d_ok "规则每天自动更新，上次：$(echo "$last" | cut -c1-19)"; fi ;;
+		esac
+	elif grep -q '^    type: http$' "$CONFIG" 2>/dev/null; then
+		d_warn "旧配置：规则由内核自己下载，没有校验"
+		d_hint "重新运行安装命令或 litebox update 会自动改成校验后更新"
 	fi
 
 	echo
@@ -555,7 +635,8 @@ cmd_accel() {
 			if [ -n "$(core_pid)" ] && [ -x "$FW" ]; then "$FW" start; fi
 			[ "$v" = 1 ] && echo "流量加速已开启。" || echo "流量加速已关闭，全部流量走 TUN。" ;;
 		"")
-			[ -n "$(core_pid)" ] || die "内核没有运行。"
+			accel_mode
+			[ -n "$(core_pid)" ] || return 0
 			DOC_FAIL=0 DOC_WARN=0
 			fw_doctor ;;
 		*) die "用法：litebox accel on|off" ;;
@@ -597,22 +678,264 @@ cmd_stack() {
 	esac
 }
 
-# 下载最新的 get.sh 并运行（参数原样传给 install.sh，比如 --mirror、--reset-config）
+# 下载最新 Release 里的 get.sh，用同一个 Release 的 SHA256SUMS 校验通过后再运行（参数原样传给 install.sh）。
+# 经镜像时 get.sh 走镜像，校验值优先直接从 GitHub 取：这样镜像站没法同时替换脚本和校验值
 cmd_update() {
-	local url=https://raw.githubusercontent.com/lyr05142002-dot/Q7Y/main/get.sh prev="" a
+	local base=${LB_RELEASE_URL:-https://github.com/lyr05142002-dot/Q7Y/releases/latest/download}
+	local mirror="" prev="" a tmp want got rc
 	for a in "$@"; do
-		[ "$prev" = --mirror ] && url="${a%/}/$url"
+		[ "$prev" = --mirror ] && mirror=${a%/}
 		prev=$a
 	done
-	if command -v curl >/dev/null 2>&1; then
-		curl -fsSL --connect-timeout 10 "$url" -o /tmp/litebox-get.sh
-	else
-		wget -q -T 30 -O /tmp/litebox-get.sh "$url"
-	fi || die "下载升级脚本失败。连不上 GitHub 时试：litebox update --mirror https://ghfast.top"
-	sh /tmp/litebox-get.sh "$@"
-	local rc=$?
-	rm -f /tmp/litebox-get.sh
+	tmp=$(mktemp -d /tmp/litebox-update.XXXXXX) || die "无法创建临时目录"
+	if ! fetch_to "$base/SHA256SUMS" "$tmp/SHA256SUMS"; then
+		[ -n "$mirror" ] && fetch_to "$mirror/$base/SHA256SUMS" "$tmp/SHA256SUMS" \
+			&& echo "注意：校验文件也是经镜像下载的，只能防下载出错，防不了镜像站被篡改。"
+	fi
+	[ -s "$tmp/SHA256SUMS" ] || { rm -rf "$tmp"; die "下载校验文件失败。连不上 GitHub 时试：litebox update --mirror https://ghfast.top"; }
+	{ [ -n "$mirror" ] && fetch_to "$mirror/$base/get.sh" "$tmp/get.sh"; } || fetch_to "$base/get.sh" "$tmp/get.sh" \
+		|| { rm -rf "$tmp"; die "下载升级脚本失败。连不上 GitHub 时试：litebox update --mirror https://ghfast.top"; }
+	want=$(awk '$2 == "get.sh" || $2 == "*get.sh" { print $1; exit }' "$tmp/SHA256SUMS")
+	got=$(sha256sum "$tmp/get.sh" | awk '{ print $1 }')
+	if [ -z "$want" ] || [ "$got" != "$want" ]; then
+		rm -rf "$tmp"
+		die "升级脚本校验不通过（应为 ${want:-未知}，实际 $got），已停止，什么都没改。"
+	fi
+	echo "升级脚本校验通过（SHA256 $got）"
+	sh "$tmp/get.sh" "$@"
+	rc=$?
+	rm -rf "$tmp"
 	return $rc
+}
+
+cmd_watchdog_interval() { # [分钟]
+	if [ -z "${1:-}" ]; then
+		echo "看门狗每 $WATCHDOG_MIN 分钟检查一次（修改：litebox watchdog-interval 分钟数，可设 1–30）"
+		return 0
+	fi
+	case "$1" in ''|*[!0-9]*) die "用法：litebox watchdog-interval 分钟数（1–30）" ;; esac
+	[ "$1" -ge 1 ] && [ "$1" -le 30 ] || die "间隔要在 1–30 分钟之间"
+	if grep -q '^WATCHDOG_MIN=' "$CONF"; then sed -i "s/^WATCHDOG_MIN=.*/WATCHDOG_MIN=$1/" "$CONF"; else echo "WATCHDOG_MIN=$1" >> "$CONF"; fi
+	touch /etc/crontabs/root
+	sed -i '/litebox watchdog # litebox$/d' /etc/crontabs/root
+	echo "*/$1 * * * * /usr/bin/litebox watchdog # litebox" >> /etc/crontabs/root
+	/etc/init.d/cron restart >/dev/null 2>&1
+	echo "看门狗改为每 $1 分钟检查一次。"
+}
+
+# ---------- 分流规则：下载、校验、替换 ----------
+# 规则集在配置里是 type: file，内核不自己下载（它下载到出错网页或空文件也照样覆盖，规则就没了）。
+# 由这里下载、去掉作者个人条目、校验，通过了才替换文件，再让内核只重读这一个规则集：
+# 不重启、不断开连接、不打乱 fake-ip。校验不过就继续用旧文件，结果写进系统日志和 rules-update.log
+
+RULES_LOG=$HOME_DIR/rules-update.log
+PERSONAL_LIST=${LB_PERSONAL:-/usr/lib/litebox/personal-rules.txt}
+RULE_MIRRORS="https://ghfast.top https://gh-proxy.com"
+
+# 配置里带 url 的规则集，一行一个：名字|类型|行为|格式|网址|路径|代理
+rule_providers() { # 配置文件
+	awk '
+		function flush() {
+			if (name != "" && url != "" && path != "") print name "|" typ "|" beh "|" fmt "|" url "|" path "|" proxy
+			name = ""
+		}
+		/^rule-providers:/ { inb = 1; next }
+		inb && /^[^ #]/ { flush(); inb = 0 }
+		!inb { next }
+		/^  [A-Za-z0-9_-]+:[ \t]*$/ { flush(); name = $1; sub(/:$/, "", name); typ = beh = fmt = url = path = proxy = ""; next }
+		/^  [A-Za-z0-9_-]+:/ { flush(); next }
+		/^    [a-z-]+:/ && name != "" {
+			k = $1; sub(/:$/, "", k)
+			v = $0; sub(/^    [a-z-]+:[ \t]*/, "", v); sub(/[ \t]+#.*$/, "", v); gsub(/^["\047]|["\047]$/, "", v)
+			if (k == "type") typ = v; else if (k == "behavior") beh = v; else if (k == "format") fmt = v
+			else if (k == "url") url = v; else if (k == "path") path = v; else if (k == "proxy") proxy = v
+		}
+		END { flush() }' "$1"
+}
+
+fetch_to() { # 网址 输出文件 [代理]
+	if command -v curl >/dev/null 2>&1; then
+		if [ -n "${3:-}" ]; then
+			curl -fsSL --connect-timeout 10 -m 90 -x "$3" -o "$2" "$1" < /dev/null 2>/dev/null
+		else
+			curl -fsSL --connect-timeout 10 -m 90 --noproxy '*' -o "$2" "$1" < /dev/null 2>/dev/null
+		fi
+	else
+		[ -z "${3:-}" ] && wget -q -T 60 -O "$2" "$1" < /dev/null 2>/dev/null
+	fi
+}
+
+# 依次试：经内核代理（内核在运行、规则集写了走代理时）、直连、指定的镜像、内置镜像
+rule_download() { # 网址 输出文件 经代理(1/空)
+	local m
+	rm -f "$2"
+	[ "${3:-}" = 1 ] && fetch_to "$1" "$2" "http://127.0.0.1:$MIXED_PORT" && return 0
+	fetch_to "$1" "$2" && return 0
+	case "$1" in https://raw.githubusercontent.com/*|https://github.com/*) ;; *) return 1 ;; esac
+	for m in ${RULE_MIRROR:-} $RULE_MIRRORS; do
+		fetch_to "$m/$1" "$2" && return 0
+	done
+	return 1
+}
+
+# 数文件里有几行像规则：输出「像规则的行数 总行数」（注释、空行不算）
+rule_count() { # 文件 行为 格式
+	awk -v b="$2" -v fm="$3" '
+		{ sub(/\r$/, ""); gsub(/^[ \t]+|[ \t]+$/, "") }
+		$0 == "" || /^#/ || /^\/\// || /^payload:/ { next }
+		{
+			t++; l = $0
+			if (fm == "yaml") { sub(/^-[ \t]*/, "", l); gsub(/^["\047]|["\047]$/, "", l) }
+			if (b == "classical" && l ~ /^[A-Z][A-Z0-9-]*,[^,]/) v++
+			else if (b == "domain" && l ~ /^[-+*.A-Za-z0-9_]+$/ && l ~ /[A-Za-z0-9]/) v++
+			else if (b == "ipcidr" && (l ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(\/[0-9]+)?$/ || l ~ /^[0-9A-Fa-f]*:[0-9A-Fa-f:.]*(\/[0-9]+)?$/)) v++
+		}
+		END { print v + 0, t + 0 }' "$1"
+}
+
+# 校验新下载的规则文件。通过时输出「规则条数」（mrs 是压缩的二进制，输出字节数），不通过时输出原因并返回 1
+rule_check() { # 新文件 行为 格式 [旧文件] [--force]
+	local f=$1 v t old=0 size
+	[ -s "$f" ] || { echo "里面没有一条能用的规则"; return 1; }
+	size=$(wc -c < "$f")
+	[ "$size" -le 16777216 ] || { echo "文件大得不正常（$size 字节）"; return 1; }
+	if head -c 2048 "$f" | tr 'A-Z' 'a-z' | grep -q '<html\|<!doctype\|<head\|<body\|<title'; then
+		echo "下载到的是网页（多半是出错页面）"; return 1
+	fi
+	case "$3" in
+		mrs)
+			# mrs 是 zstd 压缩的，开头 4 个字节固定是 28 b5 2f fd（有的固件没有 od，直接比字节）
+			[ "$(head -c 4 "$f")" = "$(printf '\050\265\057\375')" ] || { echo "不是 mrs 格式"; return 1; }
+			v=$size
+			[ -s "${4:-}" ] && old=$(wc -c < "$4")
+			;;
+		*)
+			set -- "$f" "$2" "$3" "${4:-}" "${5:-}" $(rule_count "$f" "$2" "$3")
+			v=$6 t=$7
+			[ "$v" -ge 1 ] || { echo "里面没有一条能用的规则"; return 1; }
+			[ $((v * 100)) -ge $((t * 90)) ] || { echo "只有 $v/$t 行是规则，格式不对"; return 1; }
+			[ -s "$4" ] && old=$(rule_count "$4" "$2" "$3" | awk '{ print $1 }')
+			;;
+	esac
+	# 比上一版少一半以上，多半是下载不完整（很小的名单不查，加 --force 跳过）
+	if [ "${5:-}" != --force ] && [ "$old" -ge 20 ] && [ $((v * 2)) -lt "$old" ]; then
+		echo "比上一版少了一半以上（$old → $v），可能下载不完整；确认没问题可以 litebox rules-update --force"; return 1
+	fi
+	echo "$v"
+}
+
+# 把视频作者个人用的条目（他的网站、机场域名、VPS 和宽带 IP）从直连 / 代理名单里分出来。
+# 名单写在 personal-rules.txt；另外这两个名单里的 IP-CIDR 都算个人条目，只保留 KEEP 开头的公共 DNS 等
+personal_filter() { # 输入 输出 个人条目输出
+	[ -f "$PERSONAL_LIST" ] || { cp "$1" "$2"; : > "$3"; return 0; }
+	awk -v plist="$PERSONAL_LIST" -v pout="$3" '
+		function key(s,   f) { sub(/\r$/, "", s); gsub(/[ \t]/, "", s); split(s, f, ","); return toupper(f[1]) "," tolower(f[2]) }
+		BEGIN {
+			while ((getline l < plist) > 0) {
+				gsub(/^[ \t]+|[ \t]+$/, "", l)
+				if (l == "" || l ~ /^#/) continue
+				if (l ~ /^KEEP[ \t]/) { sub(/^KEEP[ \t]+/, "", l); keep[key(l)] = 1 } else pers[key(l)] = 1
+			}
+			print "# 视频作者个人用的条目（他的网站、机场域名、VPS 和宽带 IP），从 liandu2024/clash 的名单里分出来。默认不启用：litebox personal on" > pout
+		}
+		{ raw = $0; t = raw; sub(/\r$/, "", t); gsub(/^[ \t]+|[ \t]+$/, "", t) }
+		t == "" || t ~ /^#/ { next }
+		{ k = key(t); split(k, ty, ",") }
+		(k in pers) || ((ty[1] == "IP-CIDR" || ty[1] == "IP-CIDR6") && !(k in keep)) { print t > pout; next }
+		{ print t }' "$1" > "$2"
+}
+
+rules_log() { # 一行结果
+	logger -t litebox "$1"
+	echo "$(date '+%F %T') $1" >> "$RULES_LOG"
+	tail -n 60 "$RULES_LOG" > "$RULES_LOG.new" 2>/dev/null && mv -f "$RULES_LOG.new" "$RULES_LOG"
+}
+
+# 让内核重新读一个 type: file 的规则集（http 类型的不能这样做：内核会自己去网上下载，绕过校验）
+rule_reload() { # 名字 类型
+	[ "$2" = file ] || return 0
+	[ -n "$(core_pid)" ] && command -v curl >/dev/null 2>&1 || return 0
+	curl -s -m 15 --noproxy '*' -X PUT -H "Authorization: Bearer $SECRET" "http://127.0.0.1:$PANEL_PORT/providers/rules/$1" >/dev/null 2>&1
+}
+
+cmd_rules_update() { # [--force] [--from 配置文件] [--mirror 镜像] [--install]
+	local from=$CONFIG force="" install=0 prev="" a tmp core=0 fails=0 line
+	local name typ beh fmt url path proxy dst out n via pf
+	local changed="" same=0 bad="" skipped="" nchanged=0 nbad=0 msg
+	for a in "$@"; do
+		case "$prev" in --from) from=$a ;; --mirror) RULE_MIRROR=${a%/} ;; esac
+		case "$a" in --force) force=--force ;; --install) install=1 ;; esac
+		prev=$a
+	done
+	[ -f "$from" ] || die "找不到配置文件 $from"
+	mkdir -p "$HOME_DIR/rules"
+	tmp=$(mktemp -d /tmp/litebox-rules.XXXXXX) || die "无法创建临时目录"
+	# 内核在运行就借它的代理下载（升级时旧内核还在跑）；安装过程中不让它重读规则集，装完重启时自然会读新文件
+	[ -n "$(core_pid)" ] && core=1
+	rule_providers "$from" > "$tmp/list"
+	while IFS='|' read -r name typ beh fmt url path proxy; do
+		dst=$HOME_DIR/${path#./}
+		# 连续两个都下载不了，多半是网络不通：剩下的不再挨个等超时
+		if [ "$fails" -ge 2 ]; then skipped="$skipped $name"; continue; fi
+		via=""
+		[ "$core" = 1 ] && [ -n "$proxy" ] && [ "$proxy" != DIRECT ] && via=1
+		if ! rule_download "$url" "$tmp/$name" "$via"; then
+			fails=$((fails + 1)) nbad=$((nbad + 1)) bad="$bad $name（下载失败）"
+			continue
+		fi
+		fails=0
+		if [ ! -s "$tmp/$name" ]; then
+			nbad=$((nbad + 1)) bad="$bad $name（下载到的是空文件）"
+			continue
+		fi
+		out=$tmp/$name
+		pf=""
+		case "$name" in lb_direct) pf=personal_direct ;; lb_proxy) pf=personal_proxy ;; esac
+		if [ -n "$pf" ]; then
+			personal_filter "$tmp/$name" "$tmp/$name.f" "$tmp/$pf"
+			out=$tmp/$name.f
+		fi
+		if ! n=$(rule_check "$out" "$beh" "$fmt" "$dst" "$force"); then
+			nbad=$((nbad + 1)) bad="$bad $name（$n）"
+			continue
+		fi
+		# 个人条目文件：内容变了才写（少磨闪存），启用了的话让内核重读
+		if [ -n "$pf" ] && ! { [ -f "$HOME_DIR/rules/$pf.list" ] && [ "$(sha256sum < "$tmp/$pf")" = "$(sha256sum < "$HOME_DIR/rules/$pf.list")" ]; }; then
+			cp "$tmp/$pf" "$HOME_DIR/rules/$pf.list.new" && mv -f "$HOME_DIR/rules/$pf.list.new" "$HOME_DIR/rules/$pf.list"
+			[ "$install" = 0 ] && grep -q "^  $pf:" "$from" && rule_reload "$pf" file
+		fi
+		if [ -f "$dst" ] && [ "$(sha256sum < "$out")" = "$(sha256sum < "$dst")" ]; then
+			same=$((same + 1))
+			continue
+		fi
+		# 先复制到同一目录再改名，替换是一步完成的，内核不会读到写了一半的文件
+		cp "$out" "$dst.new" && mv -f "$dst.new" "$dst" || { nbad=$((nbad + 1)) bad="$bad $name（写入失败）"; continue; }
+		changed="$changed $name" nchanged=$((nchanged + 1))
+		[ "$install" = 0 ] && rule_reload "$name" "$typ"
+	done < "$tmp/list"
+	rm -rf "$tmp"
+	msg="规则更新：$nchanged 个有更新，$same 个没变"
+	[ "$nbad" -gt 0 ] && msg="$msg，$nbad 个没更新（继续用旧版）：${bad# }"
+	[ -n "$skipped" ] && msg="$msg；网络不通，跳过了：${skipped# }"
+	rules_log "$msg"
+	echo "$msg"
+	[ -n "$changed" ] && echo "有更新：${changed# }"
+	return 0
+}
+
+# 视频作者个人条目的开关（默认关）
+cmd_personal() { # on|off|空
+	grep -q '# LITEBOX_PERSONAL$' "$CONFIG" || die "当前配置里没有这个开关（旧配置）。重新生成：litebox update --reset-config"
+	case "${1:-}" in
+		on)
+			[ -s "$HOME_DIR/rules/personal_direct.list" ] || die "还没有个人条目文件，先执行 litebox rules-update"
+			[ -f "$HOME_DIR/rules/personal_proxy.list" ] || : > "$HOME_DIR/rules/personal_proxy.list"
+			edit_config "已启用视频作者的个人条目。" 's/^  # \(.*# LITEBOX_PERSONAL\)$/  \1/' ;;
+		off) edit_config "已停用视频作者的个人条目。" 's/^  \([^ #].*# LITEBOX_PERSONAL\)$/  # \1/' ;;
+		"")
+			if grep -q '^  [^ #].*# LITEBOX_PERSONAL$' "$CONFIG"; then echo "视频作者的个人条目：已启用"; else echo "视频作者的个人条目：未启用（默认）"; fi ;;
+		*) die "用法：litebox personal on|off" ;;
+	esac
 }
 
 # 路由器自己实际访问一次，从内核的连接日志里找出这次访问命中的规则和线路
@@ -686,6 +1009,9 @@ cmd_uninstall() {
 	uci -q delete firewall.litebox_zone
 	uci -q delete firewall.litebox_fwd
 	uci -q delete firewall.litebox_inc
+	for z in $(uci -q show firewall | sed -n 's/^firewall\.\(litebox_fwd_[A-Za-z0-9_]*\)=forwarding$/\1/p'); do
+		uci -q delete "firewall.$z"
+	done
 	uci commit firewall
 	/etc/init.d/firewall reload >/dev/null 2>&1
 	sed -i '/# litebox$/d' /etc/crontabs/root 2>/dev/null
@@ -721,6 +1047,7 @@ case "${1:-}" in
 	log) logread 2>/dev/null | grep -E 'litebox|mihomo' | tail -n "${2:-50}" ;;
 	panel) show_panel ;;
 	panel-sync) panel_sync ;;
+	zones-sync) zones_sync ;;
 	route) cmd_route "${2:-}" ;;
 	direct) "$INIT" stop; "$INIT" disable; dns_off; echo "已恢复直连，开机不再自启（恢复：litebox enable）。" ;;
 	enable)
@@ -728,6 +1055,10 @@ case "${1:-}" in
 		"$INIT" enable; "$INIT" start; echo "已启用，开机自动启动。" ;;
 	watchdog) cmd_watchdog ;;
 	update) shift; cmd_update "$@" ;;
+	rules-update) shift; cmd_rules_update "$@" ;;
+	personal) cmd_personal "${2:-}" ;;
+	watchdog-interval) cmd_watchdog_interval "${2:-}" ;;
+	accel-check) accel_mode ;;
 	quic) cmd_quic "${2:-}" ;;
 	accel) cmd_accel "${2:-}" ;;
 	stack) cmd_stack "${2:-}" ;;

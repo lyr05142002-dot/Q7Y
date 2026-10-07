@@ -13,7 +13,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 IMAGE=openwrt/rootfs:x86-64-21.02.7
 WORK=$(mktemp -d)
 FAILS=0
-trap 'docker rm -f lb-offline lb-online >/dev/null 2>&1; rm -rf "$WORK"' EXIT
+trap 'docker rm -f lb-offline lb-online lb-conflict >/dev/null 2>&1; rm -rf "$WORK"' EXIT
 
 pinned() { sed -n "s/^$1=//p" "$ROOT/install.sh" | head -n 1; }
 MIHOMO_VER=$(pinned MIHOMO_VER)
@@ -105,8 +105,56 @@ run_round() { # 名字 docker网络参数
 	docker rm -f "$c" >/dev/null
 }
 
+# 已经装了别的代理插件（模拟 OpenClash：procd 服务 + 把 dnsmasq 指向 7874 + 订阅存在 uci 里）
+run_conflict() {
+	local c=lb-conflict out
+	echo
+	echo "== 已装 OpenClash 的路由器"
+	docker rm -f "$c" >/dev/null 2>&1 || true
+	docker run -d --privileged --name "$c" --network none "$IMAGE" /sbin/init >/dev/null
+	sleep 8
+	docker cp "$PKG" "$c:/root/litebox"
+	docker cp "$WORK/sub" "$c:/root/sub"
+	x() { docker exec "$c" sh -c "$1"; }
+	x 'uhttpd -p 127.0.0.1:8765 -h /root/sub'
+	x 'cat > /etc/init.d/openclash <<"EOF"
+#!/bin/sh /etc/rc.common
+START=99
+USE_PROCD=1
+start_service() {
+	procd_open_instance
+	procd_set_param command /bin/sleep 100000
+	procd_close_instance
+	uci set dhcp.@dnsmasq[0].noresolv=1; uci -q delete dhcp.@dnsmasq[0].server; uci add_list dhcp.@dnsmasq[0].server=127.0.0.1#7874; uci commit dhcp
+}
+stop_service() { :; }
+EOF
+chmod 755 /etc/init.d/openclash; touch /etc/config/openclash
+uci set openclash.sub1=config_subscribe; uci set openclash.sub1.address="http://127.0.0.1:8765/sub.yaml?token=FROM_OPENCLASH"; uci commit openclash
+/etc/init.d/openclash enable; /etc/init.d/openclash start; sleep 1'
+	check "（准备）假 OpenClash 在运行并接管了 DNS" x '/etc/init.d/openclash running && uci -q get dhcp.@dnsmasq[0].server | grep -q 7874'
+
+	out=$(x 'sh /root/litebox/install.sh < /dev/null 2>&1') || true
+	if echo "$out" | grep -q -- '--yes'; then ok "没有终端又没加 --yes 时拒绝安装"; else bad "没有终端又没加 --yes 时拒绝安装"; fi
+	check "拒绝时什么都没改" x '/etc/init.d/openclash running && [ ! -e /usr/bin/litebox ]'
+
+	out=$(x 'sh /root/litebox/install.sh --yes < /dev/null 2>&1') || true
+	echo "$out" | sed 's/^/    | /'
+	if echo "$out" | grep -q '安装完成，已启动'; then ok "加 --yes 安装完成"; else bad "加 --yes 安装完成"; return; fi
+	check "沿用了 OpenClash 里的订阅" x '[ "$(litebox sub)" = "http://127.0.0.1:8765/sub.yaml?token=FROM_OPENCLASH" ]'
+	check "OpenClash 已停止并关闭自启" x '! /etc/init.d/openclash running && ! /etc/init.d/openclash enabled'
+	check "DNS 从 7874 换成了 LiteBox" x 'uci -q get dhcp.@dnsmasq[0].server | grep -q "127.0.0.1#1053" && ! uci -q get dhcp.@dnsmasq[0].server | grep -q 7874'
+	check "LiteBox 在运行" x 'litebox status | grep -q 运行中'
+	x 'litebox switch-back' >/dev/null 2>&1 || true
+	sleep 1
+	check "switch-back 后 OpenClash 恢复运行和自启" x '/etc/init.d/openclash running && /etc/init.d/openclash enabled'
+	check "switch-back 后 LiteBox 停止且不自启" x '! pidof mihomo && ! /etc/init.d/litebox enabled'
+	docker rm -f "$c" >/dev/null
+}
+
 run_round offline "--network none"
 run_round online ""
+run_conflict
 
 echo
 if [ "$FAILS" = 0 ]; then

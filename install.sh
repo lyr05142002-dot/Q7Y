@@ -45,6 +45,7 @@ usage() {
   --port N        面板端口（默认 9090）
   --mirror URL    GitHub 下载镜像前缀，例如 https://ghfast.top（默认先直连，失败再试内置镜像）
   --reset-config  用新版模板重新生成配置（订阅、端口、密钥保留，旧配置备份为 config.yaml.old）
+  -y, --yes       所有提问都按默认回答（用检测到的订阅、停用冲突的代理插件），适合无人值守
   -h, --help      显示本帮助
 EOF
 }
@@ -53,6 +54,7 @@ SUB_URL=""
 PANEL_PORT=""
 USER_MIRROR=""
 RESET_CONFIG=0
+ASSUME_YES=0
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--sub|--port|--mirror)
@@ -64,6 +66,7 @@ while [ $# -gt 0 ]; do
 			esac
 			shift 2 ;;
 		--reset-config) RESET_CONFIG=1; shift ;;
+		-y|--yes) ASSUME_YES=1; shift ;;
 		-h|--help) usage; exit 0 ;;
 		*) usage; die "未知参数：$1" ;;
 	esac
@@ -105,13 +108,66 @@ if [ ! -c /dev/net/tun ]; then
 	[ -c /dev/net/tun ] || die "kmod-tun 安装失败。请在 GL 管理界面「系统 → 插件」里安装 kmod-tun 后重试。"
 fi
 
-for svc in openclash nikki mihomo passwall passwall2 shadowsocksr sing-box openbox homeproxy; do
-	if [ -x "/etc/init.d/$svc" ] && "/etc/init.d/$svc" running >/dev/null 2>&1; then
-		warn "检测到 $svc 正在运行，两套代理同时开会互相冲突。建议先执行：/etc/init.d/$svc stop && /etc/init.d/$svc disable"
+# ---------- 先把要问的都问完，后面全自动 ----------
+
+TTY=0
+# 放在子 shell 里试：: 是特殊内建命令，重定向失败会让整个脚本退出
+[ "$ASSUME_YES" = 0 ] && ( : < /dev/tty ) 2>/dev/null && TTY=1
+ask_yes() { # 问题；默认是
+	local a
+	[ "$ASSUME_YES" = 1 ] && return 0
+	[ "$TTY" = 1 ] || return 1
+	printf '%s [Y/n] ' "$1" > /dev/tty
+	read -r a < /dev/tty || a=""
+	case "$a" in n|N|no|NO|否) return 1 ;; *) return 0 ;; esac
+}
+mask_url() { echo "$1" | sed -E 's#^(https?://[^/?]+).*#\1/…#'; }
+
+# 已启用的其他代理插件：同时运行会抢流量和 DNS，装好后要停用（只停用，配置保留）
+OTHER_SVCS="openclash nikki mihomo passwall passwall2 shadowsocksr ssr-plus vssr bypass sing-box openbox homeproxy"
+OTHERS=""
+for svc in $OTHER_SVCS; do
+	[ -x "/etc/init.d/$svc" ] || continue
+	if "/etc/init.d/$svc" running >/dev/null 2>&1 || "/etc/init.d/$svc" enabled 2>/dev/null; then
+		OTHERS="$OTHERS $svc"
 	fi
 done
+OTHERS=${OTHERS# }
+if [ -n "$OTHERS" ]; then
+	echo
+	info "检测到这些代理插件已启用：$OTHERS"
+	info "它们和 LiteBox 同时运行会抢流量和 DNS。LiteBox 装好后会停用它们（只是停用，配置都保留，"
+	info "想切回时执行 litebox switch-back）。下载会趁它们还在工作时先完成。"
+	if ! ask_yes "[litebox] 继续吗？"; then
+		[ "$TTY" = 1 ] || die "需要停用 $OTHERS 才能安装。确认的话加 --yes 重新运行。"
+		die "已取消，什么都没改。"
+	fi
+fi
 
-TMP=$(mktemp -d /tmp/litebox.XXXXXX) || die "无法创建临时目录。"
+# 新装且没给 --sub 时，先看看其他插件里有没有现成的订阅
+if [ -z "$SUB_URL" ] && { [ ! -f "$CONFIG" ] || [ "$RESET_CONFIG" = 1 ]; }; then
+	found=$(uci -q show openclash 2>/dev/null | sed -n "s/^openclash\.[^.]*\.address='\(https\{0,1\}:\/\/.*\)'$/\1/p" | head -n 1)
+	[ -n "$found" ] || found=$(uci -q show passwall 2>/dev/null | sed -n "s/^passwall\.[^.]*\.url='\(https\{0,1\}:\/\/.*\)'$/\1/p" | head -n 1)
+	if [ -n "$found" ] && { [ ! -f "$CONFIG" ] || ! grep -q "LITEBOX_SUB" "$CONFIG" || grep -q "$SUB_PLACEHOLDER" "$CONFIG"; }; then
+		echo
+		info "检测到已有的机场订阅：$(mask_url "$found")"
+		ask_yes "[litebox] 直接用这个订阅吗？" && SUB_URL=$found
+	fi
+	if [ -z "$SUB_URL" ] && [ ! -f "$CONFIG" ] && [ "$TTY" = 1 ]; then
+		printf '[litebox] 请粘贴机场订阅地址后回车（没有可直接回车，稍后用 litebox sub 设置）：' > /dev/tty
+		read -r SUB_URL < /dev/tty || SUB_URL=""
+	fi
+fi
+echo
+
+# 内存紧张时（比如 OpenClash 还开着）临时文件放闪存，免得 /tmp 占内存
+avail_kb=$(awk '/^MemAvailable:/ { print $2 }' /proc/meminfo)
+if [ "${avail_kb:-0}" -lt 122880 ]; then
+	mkdir -p "$HOME_DIR"
+	TMP=$(mktemp -d "$HOME_DIR/.tmp.XXXXXX") || die "无法创建临时目录。"
+else
+	TMP=$(mktemp -d /tmp/litebox.XXXXXX) || die "无法创建临时目录。"
+fi
 trap 'rm -rf "$TMP"' EXIT
 trap 'rm -rf "$TMP"; exit 1' INT TERM
 
@@ -228,6 +284,30 @@ do
 done
 [ -n "$skipped" ] && warn "  连不上规则下载地址，其余规则（$skipped ）由内核启动后经代理下载。"
 
+# ---------- 停用其他代理插件 ----------
+
+if [ -n "$OTHERS" ]; then
+	info "停用 $OTHERS ..."
+	for svc in $OTHERS; do
+		"/etc/init.d/$svc" stop >/dev/null 2>&1
+		"/etc/init.d/$svc" disable >/dev/null 2>&1
+		grep -qx "$svc" "$HOME_DIR/others-stopped" 2>/dev/null || echo "$svc" >> "$HOME_DIR/others-stopped"
+	done
+	sleep 2
+	# 个别插件停掉后没把 dnsmasq 改回来，DNS 还指向已经不在的端口：改回系统默认
+	srv=$(uci -q get dhcp.@dnsmasq[0].server)
+	case "$srv" in
+		*127.0.0.1#*)
+			case "$srv" in *"127.0.0.1#1053"*) ;; *)
+				uci -q delete dhcp.@dnsmasq[0].server
+				uci -q delete dhcp.@dnsmasq[0].noresolv
+				uci commit dhcp
+				/etc/init.d/dnsmasq restart >/dev/null 2>&1
+				info "  已把 DNS 改回系统默认" ;;
+			esac ;;
+	esac
+fi
+
 # ---------- 设置与配置文件 ----------
 
 gen_secret() {
@@ -281,10 +361,6 @@ if [ -f "$CONFIG" ]; then
 	info "保留已有配置 $CONFIG"
 	sed -i "s|^external-controller: .*|external-controller: 0.0.0.0:$PANEL_PORT|" "$CONFIG"
 else
-	if [ -z "$SUB_URL" ] && [ -r /dev/tty ]; then
-		printf '请输入机场订阅地址（可直接回车跳过，稍后用 litebox sub 设置）：' > /dev/tty
-		read -r SUB_URL < /dev/tty || SUB_URL=""
-	fi
 	tr -d '\r' < "$SCRIPT_DIR/files/config.yaml.tpl" | sed \
 		-e "s|__MIXED_PORT__|$MIXED_PORT|" \
 		-e "s|__PANEL_PORT__|$PANEL_PORT|" \
@@ -341,6 +417,20 @@ else
 	# 首次安装时服务还没在运行，restart 里的 stop 会打印 "Command failed: Not found"，所以分开写
 	/etc/init.d/litebox stop >/dev/null 2>&1
 	/etc/init.d/litebox start
+	ok=0
+	for i in 1 2 3 4 5 6 7 8 9 10; do
+		sleep 1
+		[ -n "$(ubus call service list '{"name":"litebox"}' 2>/dev/null | jsonfilter -e '@.litebox.instances.*.pid' 2>/dev/null)" ] && ok=1 && break
+	done
+	if [ "$ok" = 0 ]; then
+		warn "LiteBox 没能启动。"
+		if [ -s "$HOME_DIR/others-stopped" ]; then
+			/usr/bin/litebox switch-back
+			die "已自动切回原来的代理插件，网络不受影响。把 litebox log 的输出发出来求助。"
+		fi
+		/usr/bin/litebox direct >/dev/null 2>&1
+		die "已恢复直连，网络不受影响。把 litebox log 的输出发出来求助。"
+	fi
 	info "安装完成，已启动。"
 fi
 LAN_IP=${LAN_IP:-192.168.8.1}

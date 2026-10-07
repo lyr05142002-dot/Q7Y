@@ -1,0 +1,41 @@
+/* 教程配图的公共样式：每张图是一个 HTML，用 scripts/render-docs-img.js 截成 1200px 宽的 PNG */
+* { box-sizing: border-box; }
+body {
+  margin: 0; width: 1200px; padding: 28px 32px 32px;
+  background: #f3f5f8; color: #1f2329;
+  font: 15px/1.6 "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+.head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.num { width: 34px; height: 34px; border-radius: 50%; background: #1a6ad8; color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 18px; flex: none; }
+h1 { font-size: 25px; margin: 0; }
+.tag { background: #e4e8ee; color: #4b5563; border-radius: 12px; padding: 2px 10px; font-size: 13px; }
+.row { display: flex; gap: 18px; align-items: stretch; }
+.card { background: #fff; border: 1px solid #dde2e8; border-radius: 14px; padding: 18px 20px; }
+.card h2 { font-size: 17px; margin: 0 0 10px; }
+.note { border-radius: 12px; padding: 12px 16px; font-size: 14.5px; }
+.note.warn { background: #fff6d6; border: 1px solid #f0d78a; }
+.note.ok { background: #e3f7e8; border: 1px solid #9fd9ae; }
+.note.bad { background: #fde8ea; border: 1px solid #f2a7ae; }
+.note.info { background: #e6f1fe; border: 1px solid #a9cbf5; }
+code, .mono { font-family: "DejaVu Sans Mono", "Noto Sans Mono CJK SC", monospace; }
+code { background: #eef1f5; border-radius: 5px; padding: 1px 6px; font-size: 13.5px; }
+.term { background: #0d1117; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+.term .bar { background: #1f242c; padding: 9px 14px; color: #8b949e; font-size: 13px; display: flex; align-items: center; gap: 7px; }
+.term .bar i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.term .bar i:nth-child(1) { background: #ff5f57; } .term .bar i:nth-child(2) { background: #febc2e; } .term .bar i:nth-child(3) { background: #28c840; }
+.term pre { margin: 0; padding: 14px 18px 16px; color: #d6dde6; font: 14px/1.75 "DejaVu Sans Mono", "Noto Sans Mono CJK SC", monospace; white-space: pre-wrap; word-break: break-all; }
+.term.win { background: #0c0c0c; }
+.term.win .bar { background: #202020; color: #ddd; }
+.p { color: #7ee787; } .cmd { color: #79c0ff; } .g { color: #3fb950; } .y { color: #e3b341; } .r { color: #f85149; } .dim { color: #6e7681; } .w { color: #fff; font-weight: 700; }
+.key { display: inline-block; background: #fff; color: #111; border-radius: 5px; padding: 0 7px; font: 700 12.5px/20px sans-serif; box-shadow: 0 1px 0 #999; margin: 0 2px; }
+.rel { position: relative; }
+.callout { position: absolute; background: #fff; border: 2px solid #d3263b; border-radius: 10px; padding: 7px 12px; font-size: 14px; color: #222; box-shadow: 0 2px 8px rgba(0,0,0,.18); line-height: 1.5; }
+.callout b { color: #d3263b; }
+.badge { display: inline-flex; width: 24px; height: 24px; border-radius: 50%; background: #d3263b; color: #fff; font-weight: 700; font-size: 13px; align-items: center; justify-content: center; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+ol.steps { margin: 0; padding-left: 0; list-style: none; }
+ol.steps li > span:first-child { white-space: nowrap; }
+ol.steps li { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid #eef0f3; }
+ol.steps li:last-child { border-bottom: 0; }
+
+.ann { display: inline-block; background: #ffe066; color: #1f2329; font: 600 13px/1.6 "Noto Sans CJK SC", sans-serif; border-radius: 6px; padding: 1px 9px; margin: 2px 0 2px 6px; white-space: normal; }
+.ann b { color: #c1121f; }

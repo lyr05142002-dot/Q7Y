@@ -30,6 +30,7 @@ usage() {
   update [--mirror URL]  升级到最新版（配置和订阅保留）
   quic on|off       屏蔽 / 放行走代理的 QUIC（默认屏蔽，YouTube 等更流畅）
   stack [system|gvisor|mixed]  查看或切换 TUN 协议栈（开着硬件加速出问题时试 gvisor）
+  switch-back       停用 LiteBox，恢复安装时停用的代理插件（比如 OpenClash）
   uninstall [--purge]  卸载（--purge 同时删除配置和订阅）
 EOF
 }
@@ -430,7 +431,28 @@ cmd_update() {
 	return $rc
 }
 
+# 安装时停用过的其他代理插件（openclash 等），一行一个
+OTHERS_FILE=$HOME_DIR/others-stopped
+
+cmd_switch_back() {
+	local list svc
+	list=$(cat "$OTHERS_FILE" 2>/dev/null)
+	[ -n "$list" ] || die "没有记录到安装时停用过的插件。"
+	"$INIT" stop >/dev/null 2>&1
+	"$INIT" disable >/dev/null 2>&1
+	dns_off
+	for svc in $list; do
+		[ -x "/etc/init.d/$svc" ] || continue
+		"/etc/init.d/$svc" enable
+		"/etc/init.d/$svc" start >/dev/null 2>&1
+	done
+	rm -f "$OTHERS_FILE"
+	echo "已停用 LiteBox，恢复了：$(echo $list)。想再换回 LiteBox，重新运行一次安装命令即可。"
+}
+
 cmd_uninstall() {
+	local others
+	others=$(cat "$OTHERS_FILE" 2>/dev/null)
 	"$INIT" stop >/dev/null 2>&1
 	"$INIT" disable >/dev/null 2>&1
 	dns_off
@@ -448,6 +470,10 @@ cmd_uninstall() {
 		echo "已卸载。配置和订阅保留在 $HOME_DIR（彻底删除：rm -rf $HOME_DIR）。"
 	fi
 	rm -f /usr/bin/litebox
+	if [ -n "$others" ]; then
+		echo "安装时停用过：$(echo $others)。要恢复的话执行："
+		for svc in $others; do echo "  /etc/init.d/$svc enable && /etc/init.d/$svc start"; done
+	fi
 }
 
 case "${1:-}" in
@@ -466,6 +492,7 @@ case "${1:-}" in
 	stack) cmd_stack "${2:-}" ;;
 	dns-on) dns_on ;;
 	dns-off) dns_off ;;
+	switch-back) cmd_switch_back ;;
 	uninstall) cmd_uninstall "${2:-}" ;;
 	""|-h|--help|help) usage ;;
 	*) usage; exit 1 ;;

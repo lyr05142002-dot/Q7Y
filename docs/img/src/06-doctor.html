@@ -1,0 +1,41 @@
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="style.css">
+<div class="head"><h1>装好后自检：litebox doctor</h1><span class="tag">示意图 · 数字为示例</span></div>
+<div class="row">
+  <div class="term" style="flex:1"><div class="bar"><i></i><i></i><i></i>&nbsp;root@192.168.8.1 · SSH</div>
+<pre><span class="p">root@GL-MT3600BE:~#</span> <span class="cmd">litebox doctor</span>
+LiteBox 自检（2026-10-07 20:15:02）
+
+[1] 内核与配置
+  <span class="g">[ OK ]</span> 内核 v1.19.31
+  <span class="g">[ OK ]</span> 配置文件检查通过
+  <span class="g">[ OK ]</span> 运行中（pid 4213），内存 52MB，峰值 55MB
+  <span class="g">[ OK ]</span> 面板接口正常（端口 9090）
+  <span class="g">[ OK ]</span> 订阅已加载 58 个节点，「🚀 节点选择」当前用：♻️ 自动选择
+  <span class="g">[ OK ]</span> 分流规则 10 个文件
+
+[2] 流量和 DNS 接管
+  <span class="g">[ OK ]</span> 防火墙 litebox 区域已添加
+  <span class="g">[ OK ]</span> 虚拟网卡 litebox0 已创建
+  <span class="g">[ OK ]</span> dnsmasq 已把查询转给内核（127.0.0.1#1053）
+  <span class="g">[ OK ]</span> 域名解析经过内核（返回 198.18.x.x 是正常的）
+
+[3] 网络连通（路由器自己访问）
+  <span class="g">[ OK ]</span> 国内网站（百度）正常
+  <span class="g">[ OK ]</span> 国外网站（Google）正常，代理工作中
+
+[4] 系统
+  <span class="g">[ OK ]</span> 系统剩余可用内存 236MB
+
+结论：<span class="g">全部正常。</span></pre></div>
+  <div style="width:360px;flex:none;display:flex;flex-direction:column;gap:12px">
+    <div class="card"><h2>怎么看</h2>
+      <ol class="steps">
+        <li><span style="color:#1b7a35;font-weight:700">[ OK ]</span><span>正常</span></li>
+        <li><span style="color:#a16207;font-weight:700">[注意]</span><span>能用，但建议处理</span></li>
+        <li><span style="color:#b91c1c;font-weight:700">[失败]</span><span>有问题。下面一行 <b>→</b> 写了怎么处理，照做就行</span></li>
+      </ol>
+    </div>
+    <div class="note bad"><b>上不了网？</b><br>① 先执行 <code>litebox direct</code>，立即恢复直连<br>② 再运行 <code>litebox doctor</code>，把整段输出发出来求助（不含订阅地址和面板密码）</div>
+    <div class="note info"><b>想换回 OpenClash？</b><br>执行 <code>litebox switch-back</code>，安装时停用的插件会恢复原样。</div>
+  </div>
+</div>

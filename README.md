@@ -9,7 +9,7 @@
 [![最新版本](https://img.shields.io/github/v/release/lyr05142002-dot/Q7Y?label=%E6%9C%80%E6%96%B0%E7%89%88)](https://github.com/lyr05142002-dot/Q7Y/releases/latest)
 [![OpenWrt 21.02 安装测试](https://github.com/lyr05142002-dot/Q7Y/actions/workflows/test.yml/badge.svg)](https://github.com/lyr05142002-dot/Q7Y/actions/workflows/test.yml)
 
-[下载](#下载) · [图文安装教程](#图文安装教程) · [手机版](#手机版) · [常用命令](#常用命令) · [出问题怎么办](#第-5-步检查是否正常工作)
+[下载](#下载) · [图文安装教程](#图文安装教程) · [手机版](#手机版) · [常用命令](#常用命令) · [出问题怎么办](#装好后自检出问题怎么办)
 
 </div>
 
@@ -19,6 +19,7 @@
 
 ## 特点
 
+- **一条命令装好**：登录路由器粘贴一条命令、一路回车。自动沿用 OpenClash 里已有的订阅、自动停用冲突插件，装不上自动切回原样
 - **GL 官方固件直接装**：GL 固件是 OpenWrt 21.02，[Open-Box](https://github.com/liandu2024/Open-Box) 要求 OpenWrt 24 以上装不了；LiteBox 专门按 21.02 写，不用刷机
 - **省内存**：只有一个 mihomo 进程，常驻约 50MB，大流量下也不涨；超过上限自动重启
 - **分流规则现成的**：用[视频作者](https://youtu.be/G_7AmjfSRQ8)的[域名集](https://github.com/liandu2024/clash/tree/main/list)，每天自动更新；ChatGPT / Claude / Gemini / Grok 等走单独的 🤖 AI 分组
@@ -73,14 +74,16 @@
 
 ## 下载
 
-到 [Releases 页面](https://github.com/lyr05142002-dot/Q7Y/releases/latest) 下载，或直接点：
+**一般不用手动下载**：登录路由器后粘贴一条命令就能装，见[图文安装教程](#图文安装教程)。
+
+路由器完全连不上 GitHub 时，到 [Releases 页面](https://github.com/lyr05142002-dot/Q7Y/releases/latest) 下载离线包：
 
 | 文件 | 说明 |
 |---|---|
-| [**litebox-arm64-offline.zip**](https://github.com/lyr05142002-dot/Q7Y/releases/latest/download/litebox-arm64-offline.zip) | **推荐**。已带 mihomo 内核和面板（约 23MB），路由器连不上 GitHub 也能装。适用于 GL-MT3600BE 等 aarch64 路由器 |
+| [litebox-arm64-offline.zip](https://github.com/lyr05142002-dot/Q7Y/releases/latest/download/litebox-arm64-offline.zip) | 已带 mihomo 内核和面板（约 23MB），路由器不用联网。适用于 GL-MT3600BE 等 aarch64 路由器 |
 | [litebox.zip](https://github.com/lyr05142002-dot/Q7Y/releases/latest/download/litebox.zip) | 只有脚本（几十 KB），安装时再联网下载内核和面板，支持 aarch64 / armv7 / x86_64 |
 
-也可以在路由器上用[一条命令安装](#方式二路由器上一条命令安装)（需要路由器能访问 GitHub）。手机见[手机版](#手机版)。
+手机见[手机版](#手机版)。
 
 ## 为什么不直接装 Open-Box
 
@@ -120,97 +123,92 @@ Open-Box 有些做法很实用，LiteBox 用自己的方式实现了：
 
 ![安装流程总览](docs/img/01-flow.png)
 
-### 准备
+**开始前**：电脑用网线或 Wi-Fi 连着这台路由器。在 GL 管理后台（http://192.168.8.1）关掉 GL 自带的 VPN 客户端和 AdGuard Home。装过 OpenClash、Passwall 的**不用自己处理**，安装时会自动停用（配置保留，随时能切回）。
 
-在 GL 管理界面（默认 http://192.168.8.1）里：
+### 第 1 步：登录路由器
 
-1. 关闭 GL 自带的 VPN 客户端、AdGuard Home，以及其他代理插件（OpenClash、Passwall 等），否则会和 LiteBox 抢流量和 DNS
-2. 「网络 → DNS」保持自动，不要设成手动 / 加密 DNS
-3. 确认能用 SSH 登录路由器：用户名 `root`，密码和管理界面相同
-4. 第一次安装时，最好用网线连着路由器，出问题时方便恢复
-
-### 第 1 步：在电脑上下载安装包
-
-打开 [Releases 页面](https://github.com/lyr05142002-dot/Q7Y/releases/latest)，下载 **litebox-arm64-offline.zip**，然后解压：
-
-![下载安装包](docs/img/02-download.png)
-
-### 第 2 步：把文件夹传到路由器
-
-用 [HexHub](https://www.hexhub.cn/) 连上路由器，在 SFTP 页面把整个 `litebox` 文件夹拖到路由器的 `/tmp/` 目录：
-
-![用 HexHub 上传](docs/img/03-upload.png)
-
-没有 HexHub 的话，在解压目录里打开终端执行：
-
-```bash
-scp -O -r litebox root@192.168.8.1:/tmp/
-```
-
-### 第 3 步：SSH 登录路由器，运行安装脚本
-
-```bash
-sh /tmp/litebox/install.sh --sub '你的机场订阅地址'
-```
-
-![运行安装脚本](docs/img/04-install.png)
-
-- 订阅支持 Clash / mihomo 格式，也支持 base64 节点链接
-- 不加 `--sub` 也能装，安装时会询问；直接回车跳过的话，装好后不会启动，**网络不受影响**，之后执行 `litebox sub '订阅地址'` 就会启动
-- 离线包里的内核和面板会优先使用，同样校验 SHA256；分流规则仍需联网下载，下载失败时内核启动后会经代理重试
-- 用只有脚本的 `litebox.zip` 时，路由器访问 GitHub 慢，脚本会自动依次尝试 `ghfast.top`、`gh-proxy.com` 镜像；因为校验值写死在脚本里，镜像站换不了文件内容。也可以用 `--mirror https://你的镜像` 指定
-- 面板端口默认 9090，被占用时加 `--port 9091`
-
-### 第 4 步：打开网页面板
-
-最省事的办法是复制安装结束时显示的**一键登录链接**，在手机或电脑浏览器里打开，会自动填好并进入面板。链接找不到了，就在路由器上运行 `litebox panel`。也可以按下图手动填写：
-
-![打开面板](docs/img/05-panel.png)
-
-进入面板后，在「代理」页切换节点：
-
-![面板里的四个分组](docs/img/06-groups.png)
-
-### 第 5 步：检查是否正常工作
-
-![检查](docs/img/07-check.png)
-
-也可以在路由器上运行一键自检，它会逐项检查内核、配置、订阅节点、防火墙、DNS 接管、国内外网站连通和内存，每个失败项后面都写了怎么处理：
-
-```bash
-litebox doctor
-```
+电脑按 <kbd>Win</kbd>+<kbd>R</kbd>，输入 `powershell` 回车，在打开的窗口里输入：
 
 ```
-[2] 流量和 DNS 接管
-  [ OK ] 防火墙 litebox 区域已添加
-  [ OK ] 虚拟网卡 litebox0 已创建
-  [ OK ] dnsmasq 已把查询转给内核（127.0.0.1#1053）
-  [ OK ] 域名解析经过内核（返回 198.18.x.x 是正常的）
-
-[3] 网络连通（路由器自己访问）
-  [ OK ] 国内网站（百度）正常
-  [失败] 打不开 Google（000），当前节点不通
-         → 在面板「代理」页换一个节点或点测速；全部超时说明订阅过期或机场故障
+ssh root@192.168.8.1
 ```
 
-**上不了网时**，先执行 `litebox direct` 恢复直连，再运行 `litebox doctor`，把输出整段发出来求助。输出里不含订阅地址和面板密码，日志里的网址只保留域名。
+问 yes/no 就输入 `yes`，然后输入 GL 后台的管理密码（**输入时不显示**，输完回车）。
 
-### 方式二：路由器上一条命令安装
+![登录路由器](docs/img/02-login.png)
 
-路由器能访问 GitHub 时，不用经过电脑，SSH 登录后执行：
+提示 `REMOTE HOST IDENTIFICATION HAS CHANGED` 连不上：先执行 `ssh-keygen -R 192.168.8.1`，再重新登录。
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/lyr05142002-dot/Q7Y/main/get.sh | sh -s -- --sub '你的机场订阅地址'
+### 第 2 步：粘贴一条命令，一路回车
+
+复制下面这行，在 PowerShell 窗口里**点鼠标右键**粘贴，回车：
+
+```
+curl -fsSL https://raw.githubusercontent.com/lyr05142002-dot/Q7Y/main/get.sh | sh
 ```
 
-访问 GitHub 不畅时，经镜像下载：
+接下来它会问两个问题，**都直接回车**：
 
-```bash
-curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/lyr05142002-dot/Q7Y/main/get.sh | sh -s -- --mirror https://ghfast.top --sub '你的机场订阅地址'
+1. 检测到 OpenClash / Passwall 等：回车停用它们（只是停用，下载会趁它们还在工作时先完成）
+2. 检测到它们里面已有的机场订阅：回车直接用。没检测到时会让你粘贴订阅地址
+
+然后等 1–3 分钟，看到「安装完成，已启动」就好了。
+
+![粘贴一条命令，一路回车](docs/img/03-install.png)
+
+- **装不上也不会断网**：LiteBox 起不来时会自动切回原来的 OpenClash，或者恢复直连
+- 路由器打不开 GitHub 时，命令换成下面这条（经镜像下载）；还不行就用后面的[离线包](#方式二离线包路由器完全连不上-github-时)：
+  ```
+  curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/lyr05142002-dot/Q7Y/main/get.sh | sh -s -- --mirror https://ghfast.top
+  ```
+
+### 第 3 步：打开面板
+
+把安装完显示的**一键登录链接**复制到手机或电脑浏览器，会自动填好并进入面板。链接找不到了，在路由器上运行 `litebox panel`。也可以按下图手动填：
+
+![打开面板](docs/img/04-panel.png)
+
+进入面板后在「代理」页切换节点：
+
+![面板里的四个分组](docs/img/05-groups.png)
+
+### 装好后自检、出问题怎么办
+
+在路由器上运行 `litebox doctor`，它会逐项检查，每个失败项下面都写了怎么处理：
+
+![一键自检](docs/img/06-doctor.png)
+
+| 遇到的情况 | 执行 |
+|---|---|
+| 上不了网 | `litebox direct`（立即恢复直连），再把 `litebox doctor` 的输出发出来求助（不含订阅地址和面板密码） |
+| 想换回 OpenClash | `litebox switch-back`（安装时停用的插件恢复原样） |
+| 升级到新版 | `litebox update` |
+
+### 方式二：离线包（路由器完全连不上 GitHub 时）
+
+**1. 在电脑上下载** [litebox-arm64-offline.zip](https://github.com/lyr05142002-dot/Q7Y/releases/latest/download/litebox-arm64-offline.zip)，右键「全部解压缩」，得到 `litebox` 文件夹：
+
+![下载离线包](docs/img/offline-1-download.png)
+
+**2. 传到路由器**：用 [HexHub](https://www.hexhub.cn/) 的 SFTP 把整个 `litebox` 文件夹拖到路由器的 `/tmp/`，或者在解压目录里打开 PowerShell 执行 `scp -O -r litebox root@192.168.8.1:/tmp/`（提示 `-O` 不认识就去掉 `-O`）：
+
+![上传到路由器](docs/img/offline-2-upload.png)
+
+**3. 登录路由器执行**下面这行，同样一路回车，之后从[第 3 步](#第-3-步打开面板)继续：
+
+```
+sh /tmp/litebox/install.sh
 ```
 
-它会下载最新版的 `litebox.tar.gz`，校验 SHA256（校验值优先直接从 GitHub 取），然后运行同一个 `install.sh`，参数原样传过去。装好后从第 4 步继续。
+<details>
+<summary>高级选项</summary>
+
+- `--sub '订阅地址'`：直接指定订阅，不再询问。订阅支持 Clash / mihomo 格式和 base64 节点链接
+- `--yes`：所有问题按默认回答（用检测到的订阅、停用冲突插件），适合无人值守
+- `--mirror https://你的镜像`：指定 GitHub 镜像。内核和面板的 SHA256 写死在脚本里，镜像站换不了文件内容
+- `--port 9091`：面板端口（默认 9090）
+- 一条命令的方式是下载最新版的 `litebox.tar.gz`，校验 SHA256 后运行同一个 `install.sh`，参数原样传过去
+</details>
 
 ## 手机版
 
@@ -273,6 +271,7 @@ curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/lyr05142002-dot/
 | `litebox update` | 升级到最新版，配置和订阅保留（连不上 GitHub 时加 `--mirror https://ghfast.top`） |
 | `litebox quic on` / `off` | 屏蔽 / 放行走代理的 QUIC（默认屏蔽） |
 | `litebox stack gvisor` | 切换 TUN 协议栈（`system` 默认 / `gvisor` / `mixed`），开着硬件加速出问题时用 |
+| `litebox switch-back` | 停用 LiteBox，恢复安装时停用的 OpenClash 等插件 |
 | `litebox uninstall` | 卸载（`--purge` 连配置和订阅一起删） |
 
 升级：执行 `litebox update`；或下载新版安装包，按第 2、3 步重新执行 `install.sh`。配置、订阅、面板密钥都会保留。

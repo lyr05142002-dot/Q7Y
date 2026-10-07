@@ -108,6 +108,14 @@ section.box { background: var(--card); border: 1px solid var(--line); border-rad
 .chain .ar { color: var(--sub); }
 .tip { background: var(--bg); border-radius: 10px; padding: 10px 12px; color: var(--sub); font-size: 12.5px; margin-top: 12px; }
 .hide { display: none !important; }
+section.box.sub { border: 2px solid var(--green); }
+section.box.sub.bad { border-color: var(--red); }
+.sub .row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.sub .big { font-size: 20px; }
+.sub .meter { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin-top: 6px; max-width: 420px; }
+.sub .meter i { display: block; height: 100%; background: var(--green); }
+.sub .how { color: var(--sub); font-size: 13px; margin-top: 10px; }
+.sub .how code, .sub .how .mono { background: var(--bg); padding: 1px 6px; border-radius: 6px; }
 </style>
 </head>
 <body>
@@ -133,6 +141,21 @@ section.box { background: var(--card); border: 1px solid var(--line); border-rad
 	</section>
 
 	<div id="ov" class="hide">
+		<section class="box sub" id="subbox">
+			<div class="hd">
+				<h2>机场订阅</h2>
+				<span class="tag" id="sub-state">读取中…</span>
+				<div class="grow"></div>
+				<button class="btn" id="sub-update">更新节点</button>
+			</div>
+			<div class="row">
+				<div><small style="color:var(--sub)">节点</small><div class="big" id="sub-nodes">-</div></div>
+				<div style="flex:1;min-width:220px"><small style="color:var(--sub)" id="sub-traffic-k">套餐流量</small><div id="sub-traffic">机场没有提供</div><div class="meter"><i id="sub-bar" style="width:0"></i></div></div>
+				<div><small style="color:var(--sub)">到期</small><div id="sub-expire">-</div></div>
+				<div><small style="color:var(--sub)">上次更新</small><div id="sub-updated">-</div></div>
+			</div>
+			<div class="how" id="sub-how"></div>
+		</section>
 		<section class="box">
 			<div class="hd">
 				<h2>面板概览</h2>
@@ -217,7 +240,7 @@ const store = {
 const ICON = {
 	baidu: '<svg viewBox="0 0 24 24"><path fill="#2932e1" d="M9.154 0C7.71 0 6.54 1.658 6.54 3.707c0 2.051 1.171 3.71 2.615 3.71 1.446 0 2.614-1.659 2.614-3.71C11.768 1.658 10.6 0 9.154 0zm7.025.594C14.86.58 13.347 2.589 13.2 3.927c-.187 1.745.25 3.487 2.179 3.735 1.933.25 3.175-1.806 3.422-3.364.252-1.555-.995-3.364-2.362-3.674a1.218 1.218 0 0 0-.261-.03zM3.582 5.535a2.811 2.811 0 0 0-.156.008c-2.118.19-2.428 3.24-2.428 3.24-.287 1.41.686 4.425 3.297 3.864 2.617-.561 2.262-3.68 2.183-4.362-.125-1.018-1.292-2.773-2.896-2.75zm16.534 1.753c-2.308 0-2.617 2.119-2.617 3.616 0 1.43.121 3.425 2.988 3.362 2.867-.063 2.553-3.238 2.553-3.988 0-.745-.62-2.99-2.924-2.99zm-8.264 2.478c-1.424.014-2.708.925-3.323 1.947-1.118 1.868-2.863 3.05-3.112 3.363-.25.309-3.61 2.116-2.864 5.42.746 3.301 3.365 3.237 3.365 3.237s1.93.19 4.171-.31c2.24-.495 4.17.123 4.17.123s5.233 1.748 6.665-1.616c1.43-3.364-.808-5.109-.808-5.109s-2.99-2.306-4.736-4.798c-1.072-1.665-2.348-2.268-3.528-2.257zm-2.234 3.84l1.542.024v8.197H7.758c-1.47-.291-2.055-1.292-2.13-1.462-.072-.173-.488-.976-.268-2.343.635-2.049 2.447-2.196 2.447-2.196h1.81zm3.964 2.39v3.881c.096.413.612.488.612.488h1.614v-4.343h1.689v5.782h-3.915c-1.517-.39-1.59-1.465-1.59-1.465v-4.317zm-5.458 1.147c-.66.197-.978.708-1.05.928-.076.22-.247.78-.1 1.269.294 1.095 1.248 1.144 1.248 1.144h1.37v-3.34z"/></svg>',
 	google: '<svg viewBox="0 0 24 24"><path fill="#4285f4" d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/></svg>',
-	ai: '<svg viewBox="0 0 24 24"><path fill="#7c3aed" d="M12 1.5l2.6 7.9L22.5 12l-7.9 2.6L12 22.5l-2.6-7.9L1.5 12l7.9-2.6z"/></svg>',
+	ai: '<svg viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z"/></svg>',
 	github: '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>',
 	youtube: '<svg viewBox="0 0 24 24"><path fill="#ff0000" d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>',
 };
@@ -226,7 +249,7 @@ const ICON = {
 const SITES = [
 	{ id: "baidu", name: "百度", url: "https://www.baidu.com", via: ["DIRECT"] },
 	{ id: "google", name: "Google", url: "https://www.google.com/generate_204", via: ["Google", "🚀 节点选择", "GLOBAL"] },
-	{ id: "ai", name: "OpenAI", url: "https://chatgpt.com/favicon.ico", via: ["🤖 AI", "🚀 节点选择", "GLOBAL"] },
+	{ id: "ai", name: "OpenAI", url: "https://chatgpt.com/favicon.ico", via: ["ChatGPT", "🤖 AI", "🚀 节点选择", "GLOBAL"] },
 	{ id: "github", name: "GitHub", url: "https://github.com", via: ["GitHub", "🚀 节点选择", "GLOBAL"] },
 ];
 
@@ -305,6 +328,46 @@ async function start() {
 	setInterval(() => { if (!document.hidden) refreshRules(); }, 15000);
 	loadTraffic();
 	setInterval(() => { if (!document.hidden) loadTraffic(); }, 300000);
+	loadSub();
+	setInterval(() => { if (!document.hidden) loadSub(); }, 60000);
+	$("#sub-update").onclick = async () => {
+		$("#sub-update").disabled = true;
+		$("#sub-state").textContent = "正在更新…";
+		try { await fetch("../../providers/proxies/sub", { method: "PUT", headers: { Authorization: "Bearer " + SECRET } }); } catch (e) {}
+		await loadSub();
+		$("#sub-update").disabled = false;
+	};
+}
+
+// ---------- 机场订阅 ----------
+async function loadSub() {
+	let p = null;
+	try { p = await api("../../providers/proxies/sub"); } catch (e) {}
+	const n = p && p.proxies ? p.proxies.length : 0;
+	const info = (p && p.subscriptionInfo) || {};
+	const bad = !n;
+	$("#subbox").classList.toggle("bad", bad);
+	$("#sub-state").className = "tag " + (bad ? "r" : "g");
+	$("#sub-state").textContent = bad ? "没有节点" : "正常";
+	$("#sub-nodes").textContent = n;
+	if (info.Total > 0) {
+		const used = (info.Upload || 0) + (info.Download || 0);
+		$("#sub-traffic").textContent = `已用 ${fmtBytes(used)} / 共 ${fmtBytes(info.Total)}（剩 ${fmtBytes(Math.max(0, info.Total - used))}）`;
+		$("#sub-bar").style.width = Math.min(100, (used / info.Total) * 100).toFixed(1) + "%";
+		$("#sub-bar").style.background = used / info.Total > 0.9 ? "var(--red)" : "var(--green)";
+	}
+	if (info.Expire > 0) {
+		const d = new Date(info.Expire * 1000), left = Math.ceil((d - Date.now()) / 86400000);
+		$("#sub-expire").textContent = d.toLocaleDateString("zh-CN") + (left >= 0 ? `（还剩 ${left} 天）` : "（已过期）");
+	}
+	if (p && p.updatedAt && !/^0001/.test(p.updatedAt)) $("#sub-updated").textContent = new Date(p.updatedAt).toLocaleString("zh-CN", { hour12: false });
+	// 改订阅地址要在路由器上改：有 LuCI 页面就给链接，没有就给命令
+	let luci = "";
+	try { const r = await fetch("luci.txt", { cache: "no-store" }); if (r.ok) luci = (await r.text()).trim(); } catch (e) {}
+	const port = /^\d+$/.test(luci) && luci !== "80" ? ":" + luci : "";
+	const link = luci ? `<a href="http://${location.hostname}${port}/cgi-bin/luci/admin/services/litebox" target="_blank" rel="noopener">路由器后台 → 服务 → LiteBox</a>，把新地址粘贴到最上面的框里，点「保存并启动」；或者` : "";
+	$("#sub-how").innerHTML = (bad ? '<b style="color:var(--red)">订阅里没有节点：订阅地址不对、已经过期，或者还没填。</b><br>' : "") +
+		`更换订阅地址：${link}用 SSH 登录路由器执行 <span class="mono">litebox sub '新的订阅地址'</span>`;
 }
 
 // ---------- 站点延迟 ----------

@@ -1,0 +1,13 @@
+{
+	"admin/services/litebox": {
+		"title": "LiteBox",
+		"order": 1,
+		"action": {
+			"type": "view",
+			"path": "litebox"
+		},
+		"depends": {
+			"acl": [ "luci-app-litebox" ]
+		}
+	}
+}

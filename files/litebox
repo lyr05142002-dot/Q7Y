@@ -17,6 +17,10 @@ TRAFFIC_DB=$HOME_DIR/traffic.txt
 TRAFFIC_RUN=/tmp/litebox-traffic.txt
 TRAFFIC_LAST=/tmp/litebox-traffic.last
 
+# 会和 LiteBox 抢流量、DNS 的代理插件（和 install.sh 里的列表一致）
+OTHER_SVCS="openclash nikki mihomo passwall passwall2 shadowsocksr ssr-plus vssr bypass sing-box openbox homeproxy"
+LUCI_FILES="/www/luci-static/resources/view/litebox.js /usr/share/luci/menu.d/luci-app-litebox.json /usr/share/rpcd/acl.d/luci-app-litebox.json"
+
 PANEL_PORT=9090 MIXED_PORT=7890 SECRET="" MEM_SOFT_MB=100 MEM_HARD_MB=180
 [ -f "$CONF" ] && . "$CONF"
 
@@ -29,12 +33,14 @@ usage() {
   doctor            一键自检：内核、订阅、DNS、网络、内存，出问题时先跑这个
   mem               详细内存信息
   sub [地址]        查看或修改机场订阅地址（修改后自动重启生效）
+  sub-update        立即重新下载订阅里的节点
   start | stop | restart
   check             检查配置文件
   log               查看最近的内核日志
   panel             显示面板地址和密钥
   route <域名>      路由器实际访问一次，看 DNS、命中的规则和走的线路
   direct            紧急恢复直连（停止并禁用开机自启）
+  enable            重新启用（开机自启并启动），和 direct 相反
   update [--mirror URL]  升级到最新版（配置和订阅保留）
   accel [on|off]    查看或开关流量加速（国内 IP 不进内核、TCP 走 iptables 转发）
   quic on|off       屏蔽 / 放行走代理的 QUIC（默认屏蔽，YouTube 等更流畅）
@@ -70,12 +76,19 @@ show_panel() {
 # 把概览页放进面板目录。只在缺的时候补（比如在 zashboard 里点了「更新面板」把目录整个换掉了），
 # 面板本身还没下载好时不动，免得内核以为面板已存在、不再下载
 panel_sync() {
-	local dir=$HOME_DIR/ui/litebox
+	local dir=$HOME_DIR/ui/litebox port
 	[ -f "$PANEL_SRC" ] && [ -f "$HOME_DIR/ui/index.html" ] || return 0
 	[ -d "$dir" ] || mkdir -p "$dir"
 	[ -f "$dir/index.html" ] || cp "$PANEL_SRC" "$dir/index.html"
 	[ -f "$TRAFFIC_RUN" ] || { [ -f "$TRAFFIC_DB" ] && cp "$TRAFFIC_DB" "$TRAFFIC_RUN"; }
 	[ -L "$dir/traffic.txt" ] || ln -sf "$TRAFFIC_RUN" "$dir/traffic.txt"
+	# 装了 LuCI 页面就告诉概览页后台的端口，它好给出「去后台改订阅」的链接
+	if [ -f /usr/share/luci/menu.d/luci-app-litebox.json ]; then
+		port=$(uci -q get uhttpd.main.listen_http | tr ' ' '\n' | grep -v '\[' | head -n 1 | sed 's/.*://')
+		[ "$(cat "$dir/luci.txt" 2>/dev/null)" = "${port:-80}" ] || echo "${port:-80}" > "$dir/luci.txt"
+	else
+		rm -f "$dir/luci.txt"
+	fi
 }
 
 # 累计经过内核的流量（由看门狗每 5 分钟调用）。内核给的是启动以来的总量，按 pid 判断有没有重启过
@@ -150,7 +163,7 @@ cmd_status() {
 		echo "状态：未运行"
 	fi
 	if grep -q "$SUB_PLACEHOLDER" "$CONFIG" 2>/dev/null; then
-		echo "订阅：未设置（litebox sub '订阅地址'）"
+		echo "订阅：未设置（litebox sub '订阅地址'，或在路由器后台「服务 → LiteBox」里填）"
 	fi
 	[ -f "$DNS_BAK" ] && echo "DNS：已由内核接管" || echo "DNS：未接管"
 	show_panel
@@ -165,14 +178,27 @@ cmd_mem() {
 	free -m 2>/dev/null || free
 }
 
-cmd_sub() {
+# 粘贴时常带进来的空格、换行、引号去掉
+clean_url() { printf '%s' "$1" | tr -d '\r\n' | sed -e "s/^[[:space:]\"']*//" -e "s/[[:space:]\"']*\$//"; }
+
+sub_url() { sed -n "s/^    url: '\(.*\)' # LITEBOX_SUB\$/\1/p" "$CONFIG" 2>/dev/null | sed "s/''/'/g"; }
+
+# 订阅里当前加载到的节点数（内核没运行或没有 curl 时输出 0）
+sub_nodes() { api /providers/proxies/sub | jsonfilter -e '@.proxies[*].name' 2>/dev/null | wc -l; }
+
+cmd_sub() { # [地址] [--no-wait]
+	local url v n=0 i
 	if [ -z "${1:-}" ]; then
-		sed -n "s/^    url: '\(.*\)' # LITEBOX_SUB\$/\1/p" "$CONFIG" | sed "s/''/'/g"
+		url=$(sub_url)
+		[ "$url" = "$SUB_PLACEHOLDER" ] || echo "$url"
 		return 0
 	fi
-	case "$1" in http://*|https://*) ;; *) die "订阅地址要以 http:// 或 https:// 开头。" ;; esac
-	local v
-	v=$(printf '%s' "$1" | sed -e "s/'/''/g" -e 's/[\\|&]/\\&/g')
+	url=$(clean_url "$1")
+	case "$url" in
+		http://*|https://*) ;;
+		*) die "订阅地址要以 http:// 或 https:// 开头。在机场网站找「复制订阅链接 / Clash 订阅」，复制后粘贴。" ;;
+	esac
+	v=$(printf '%s' "$url" | sed -e "s/'/''/g" -e 's/[\\|&]/\\&/g')
 	cp "$CONFIG" "$CONFIG.bak"
 	sed -i "s|^\(    url: \).*# LITEBOX_SUB\$|\1'$v' # LITEBOX_SUB|" "$CONFIG"
 	if ! check_config >/dev/null 2>&1; then
@@ -182,7 +208,58 @@ cmd_sub() {
 	rm -f "$CONFIG.bak" "$HOME_DIR/providers/sub.yaml"
 	"$INIT" enable
 	"$INIT" restart
-	echo "订阅已更新，内核已重启。"
+	if [ "${2:-}" = --no-wait ] || ! command -v curl >/dev/null 2>&1; then
+		echo "订阅已保存，内核已重启。"
+		return 0
+	fi
+	echo "订阅已保存，正在下载节点 ..."
+	for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+		sleep 1
+		n=$(sub_nodes)
+		[ "$n" -gt 0 ] && break
+	done
+	if [ "$n" -gt 0 ]; then
+		echo "订阅已生效，加载了 $n 个节点。"
+	else
+		echo "20 秒内还没下载到节点。确认订阅地址复制完整、没有过期；稍后执行 litebox doctor 查看原因。"
+	fi
+}
+
+cmd_sub_update() {
+	[ -n "$(core_pid)" ] || die "内核没有运行。"
+	command -v curl >/dev/null 2>&1 || die "需要 curl：opkg update && opkg install curl"
+	curl -s -m 30 --noproxy '*' -X PUT -H "Authorization: Bearer $SECRET" "http://127.0.0.1:$PANEL_PORT/providers/proxies/sub" >/dev/null 2>&1
+	echo "已重新下载订阅，现在有 $(sub_nodes) 个节点。"
+}
+
+# 给 LuCI 页面用：当前状态输出成一行 JSON
+cmd_luci_status() {
+	local pid rss=0 url prov ip
+	. /usr/share/libubox/jshn.sh
+	pid=$(core_pid)
+	[ -n "$pid" ] && rss=$(status_kb "$pid" VmRSS)
+	url=$(sub_url)
+	[ "$url" = "$SUB_PLACEHOLDER" ] && url=""
+	ip=$(lan_ip)
+	json_init
+	json_add_boolean running "$([ -n "$pid" ] && echo 1 || echo 0)"
+	json_add_boolean enabled "$("$INIT" enabled 2>/dev/null && echo 1 || echo 0)"
+	json_add_int mem_mb "$((${rss:-0} / 1024))"
+	json_add_string sub "$url"
+	json_add_boolean dns "$([ -f "$DNS_BAK" ] && echo 1 || echo 0)"
+	json_add_string accel "$(cat "$FW_STATE" 2>/dev/null)"
+	json_add_string panel "http://$ip:$PANEL_PORT/ui/#/setup?hostname=$ip&port=$PANEL_PORT&secret=$SECRET"
+	json_add_string overview "http://$ip:$PANEL_PORT/ui/litebox/#secret=$SECRET"
+	if [ -n "$pid" ] && prov=$(api /providers/proxies/sub) && [ -n "$prov" ]; then
+		json_add_int nodes "$(echo "$prov" | jsonfilter -e '@.proxies[*].name' 2>/dev/null | wc -l)"
+		json_add_string updated "$(echo "$prov" | jsonfilter -e '@.updatedAt' 2>/dev/null)"
+		# 流量是字节数，可能超过 32 位整数，按字符串传
+		json_add_string sub_upload "$(echo "$prov" | jsonfilter -e '@.subscriptionInfo.Upload' 2>/dev/null)"
+		json_add_string sub_download "$(echo "$prov" | jsonfilter -e '@.subscriptionInfo.Download' 2>/dev/null)"
+		json_add_string sub_total "$(echo "$prov" | jsonfilter -e '@.subscriptionInfo.Total' 2>/dev/null)"
+		json_add_string sub_expire "$(echo "$prov" | jsonfilter -e '@.subscriptionInfo.Expire' 2>/dev/null)"
+	fi
+	json_dump
 }
 
 # 由 cron 每 5 分钟调用：内存超过硬上限就重启内核；并保证「内核在跑」和「DNS 交给内核」两件事一致，
@@ -401,7 +478,7 @@ cmd_doctor() {
 		d_warn "系统剩余可用内存只有 ${avail}MB"
 		d_hint "关掉路由器上不用的插件（AdGuard Home 等）"
 	fi
-	for svc in openclash nikki mihomo passwall passwall2 shadowsocksr sing-box openbox homeproxy; do
+	for svc in $OTHER_SVCS; do
 		if svc_active "$svc"; then
 			d_bad "$svc $SVC_STATE，和 LiteBox 会互相冲突"
 			d_hint "/etc/init.d/$svc stop && /etc/init.d/$svc disable"
@@ -614,6 +691,11 @@ cmd_uninstall() {
 	sed -i '/# litebox$/d' /etc/crontabs/root 2>/dev/null
 	/etc/init.d/cron restart >/dev/null 2>&1
 	rm -rf /usr/lib/litebox "$INIT"
+	if [ -f /usr/share/luci/menu.d/luci-app-litebox.json ]; then
+		# shellcheck disable=SC2086
+		rm -f $LUCI_FILES /tmp/luci-indexcache* /tmp/luci-modulecache
+		/etc/init.d/rpcd reload >/dev/null 2>&1
+	fi
 	if [ "${1:-}" = "--purge" ]; then
 		rm -rf "$HOME_DIR"
 		echo "已卸载，配置和订阅也已删除。"
@@ -631,14 +713,19 @@ case "${1:-}" in
 	status) cmd_status ;;
 	doctor) cmd_doctor ;;
 	mem) cmd_mem ;;
-	sub) cmd_sub "${2:-}" ;;
+	sub) cmd_sub "${2:-}" "${3:-}" ;;
+	sub-update) cmd_sub_update ;;
+	luci-status) cmd_luci_status ;;
 	start|stop|restart) "$INIT" "$1" ;;
 	check) check_config ;;
 	log) logread 2>/dev/null | grep -E 'litebox|mihomo' | tail -n "${2:-50}" ;;
 	panel) show_panel ;;
 	panel-sync) panel_sync ;;
 	route) cmd_route "${2:-}" ;;
-	direct) "$INIT" stop; "$INIT" disable; dns_off; echo "已恢复直连，开机不再自启（恢复：litebox start && /etc/init.d/litebox enable）。" ;;
+	direct) "$INIT" stop; "$INIT" disable; dns_off; echo "已恢复直连，开机不再自启（恢复：litebox enable）。" ;;
+	enable)
+		grep -q "$SUB_PLACEHOLDER" "$CONFIG" 2>/dev/null && die "还没有设置订阅：litebox sub '订阅地址'"
+		"$INIT" enable; "$INIT" start; echo "已启用，开机自动启动。" ;;
 	watchdog) cmd_watchdog ;;
 	update) shift; cmd_update "$@" ;;
 	quic) cmd_quic "${2:-}" ;;

@@ -11,8 +11,15 @@
 [litebox] 想切回时执行 litebox switch-back）。下载会趁它们还在工作时先完成。
 [litebox] 继续吗？ [Y/n] <span class="w">⏎</span> <span class="ann">⬅ 装了 OpenClash 等才会问：<b>直接回车</b>（只是停用，以后一条命令切回）</span>
 
-[litebox] 检测到已有的机场订阅：https://app.example.net/…
-[litebox] 直接用这个订阅吗？ [Y/n] <span class="w">⏎</span> <span class="ann">⬅ 找到已有订阅：<b>直接回车</b>（没找到时会让你粘贴订阅地址）</span>
+<span class="dim">┌────────────────────────── 机场订阅地址 ──────────────────────────┐
+  订阅地址就是机场给你的「Clash 订阅链接」，以 https:// 开头，
+  在机场网站的「仪表盘 / 一键订阅 / 复制订阅链接」里复制。
+  粘贴方法：在这个窗口里点鼠标右键，或按 Ctrl+V（苹果电脑按 ⌘V），粘贴好后按回车。
+  暂时没有就直接按回车，装好后在路由器后台「服务 → LiteBox」里填。
+└──────────────────────────────────────────────────────────────────┘</span>
+订阅地址：<span class="y">https://app.example.net/api/v1/client/subscribe?token=••••••</span> <span class="w">⏎</span> <span class="ann">⬅ <b>右键粘贴订阅地址，回车</b></span>
+[litebox] 已收到订阅：https://app.example.net/…
+<span class="ann">（装过 OpenClash 的会先问「直接用这个订阅吗」：回车就用原来的；选 n 再粘贴新的）</span>
 
 [litebox] 安装 mihomo v1.19.31（arm64）... <span class="ann">⬅ 接下来自动进行，约 1–3 分钟，<b>中途不用管</b></span>
 [litebox] 安装 zashboard 面板 v3.29.1 ...
@@ -23,9 +30,11 @@
 
 [litebox] <span class="g">安装完成，已启动。</span>
 
-  一键登录：<span class="y">http://192.168.8.1:9090/ui/#/setup?hostname=192.168.8.1&amp;port=9090&amp;secret=a1b2c3d4e5f6a7b8c9d0e1f2</span>
+  一键登录面板：<span class="y">http://192.168.8.1:9090/ui/#/setup?hostname=192.168.8.1&amp;port=9090&amp;secret=a1b2c3d4e5f6a7b8c9d0e1f2</span>
   （复制到浏览器打开即可。手动登录时：主机 192.168.8.1，端口 9090，密码 a1b2c3d4e5f6a7b8c9d0e1f2）
-<span class="ann">⬆ <b>复制「一键登录」这条链接</b>，粘贴到手机或电脑浏览器，进入面板（第 3 步）</span></pre>
+  概览和路由测试：http://192.168.8.1:9090/ui/litebox/#secret=a1b2c3d4e5f6a7b8c9d0e1f2
+  改订阅、看状态：路由器后台 → 服务 → LiteBox
+<span class="ann">⬆ <b>复制「一键登录面板」这条链接</b>，粘贴到手机或电脑浏览器，进入面板（第 3 步）</span></pre>
 </div>
 <div class="row" style="margin-top:14px">
   <div class="note ok" style="flex:1">✅ <b>装不上也不会断网</b>：LiteBox 起不来时会自动切回原来的 OpenClash，或者恢复直连。</div>

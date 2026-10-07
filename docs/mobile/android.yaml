@@ -1,4 +1,4 @@
-# LiteBox 手机版（安卓）：和路由器同一套分组和分流规则，给 mihomo 内核的 App 用
+# LiteBox 手机版（安卓）：和路由器同一套分流规则（分组比路由器精简），给 mihomo 内核的 App 用
 #   FlClash：https://github.com/chen08209/FlClash/releases
 #   Clash Meta for Android：https://github.com/MetaCubeX/ClashMetaForAndroid/releases
 # 用法：打开 https://lyr05142002-dot.github.io/Q7Y/ 填订阅地址生成，或手动把下面的 __SUB_URL__ 换成机场订阅地址，
@@ -247,7 +247,6 @@ rules:
   - RULE-SET,lb_direct,DIRECT
   # 屏蔽走代理的 QUIC（UDP 443）：App 会自动退回 TCP，节点 UDP 差时更流畅；国内站点不受影响
   - AND,((NETWORK,UDP),(DST-PORT,443),(NOT,((RULE-SET,cn_site)))),REJECT
-  - RULE-SET,lb_ai,🤖 AI
   - RULE-SET,lb_claude,🤖 AI
   - RULE-SET,lb_chatgpt,🤖 AI
   - RULE-SET,lb_gemini,🤖 AI
@@ -259,6 +258,8 @@ rules:
   - RULE-SET,ms_github,🚀 节点选择
   - RULE-SET,ms_telegram,🚀 节点选择
   - RULE-SET,ms_twitter,🚀 节点选择
+  # AI 总名单放在常用应用后面：它里面有 x.com、googleapis.com、gstatic.com 这类通用域名
+  - RULE-SET,lb_ai,🤖 AI
   - RULE-SET,ms_telegram_ip,🚀 节点选择,no-resolve
   - RULE-SET,lb_proxy,🚀 节点选择
   - RULE-SET,cn_site,DIRECT

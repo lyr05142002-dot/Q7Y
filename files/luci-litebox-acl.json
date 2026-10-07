@@ -1,0 +1,25 @@
+{
+	"luci-app-litebox": {
+		"description": "LiteBox：查看状态、修改订阅、启停",
+		"read": {
+			"file": {
+				"/usr/bin/litebox luci-status": [ "exec" ]
+			},
+			"ubus": {
+				"file": [ "exec" ]
+			}
+		},
+		"write": {
+			"file": {
+				"/usr/bin/litebox sub *": [ "exec" ],
+				"/usr/bin/litebox sub-update": [ "exec" ],
+				"/usr/bin/litebox restart": [ "exec" ],
+				"/usr/bin/litebox direct": [ "exec" ],
+				"/usr/bin/litebox enable": [ "exec" ]
+			},
+			"ubus": {
+				"file": [ "exec" ]
+			}
+		}
+	}
+}

@@ -10,6 +10,11 @@ HOME_DIR=/etc/litebox
 
 start_service() {
 	[ -x "$BIN" ] && [ -f "$HOME_DIR/config.yaml" ] || return 1
+	# 还没填订阅时不启动：否则开机后 DNS 被接管，境外网站却没有节点可用
+	if grep -q 'sub.invalid/litebox-placeholder' "$HOME_DIR/config.yaml"; then
+		logger -t litebox "还没有设置订阅，不启动。设置：litebox sub '订阅地址'，或在路由器后台「服务 → LiteBox」里填"
+		return 1
+	fi
 	MEM_SOFT_MB=100
 	[ -f "$HOME_DIR/litebox.conf" ] && . "$HOME_DIR/litebox.conf"
 

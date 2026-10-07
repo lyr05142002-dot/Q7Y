@@ -34,6 +34,7 @@ fetch_verified() { # URL 输出文件 SHA256
 mkdir -p "$WORK/scripts/litebox/files"
 cp install.sh README.md "$WORK/scripts/litebox/"
 cp files/* "$WORK/scripts/litebox/files/"
+cp -r licenses "$WORK/scripts/litebox/licenses"
 chmod 755 "$WORK/scripts/litebox/install.sh" "$WORK/scripts/litebox/files/litebox" "$WORK/scripts/litebox/files/litebox.init" "$WORK/scripts/litebox/files/litebox-firewall.sh"
 (cd "$WORK/scripts" && tar --owner=0 --group=0 -czf "$DIST/litebox.tar.gz" litebox && zip -qr "$DIST/litebox.zip" litebox)
 
@@ -43,7 +44,6 @@ fetch_verified "https://github.com/MetaCubeX/mihomo/releases/download/$MIHOMO_VE
 	"$WORK/offline/litebox/mihomo-linux-arm64-$MIHOMO_VER.gz" "$MIHOMO_SHA"
 fetch_verified "https://github.com/Zephyruso/zashboard/releases/download/$UI_VER/$UI_ASSET" \
 	"$WORK/offline/litebox/$UI_ASSET" "$UI_SHA"
-cp -r licenses "$WORK/offline/litebox/licenses"
 (cd "$WORK/offline" && zip -qr "$DIST/litebox-arm64-offline.zip" litebox)
 
 # GPL-3.0 要求随二进制提供对应源码

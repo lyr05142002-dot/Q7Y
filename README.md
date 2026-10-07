@@ -9,7 +9,7 @@
 [![最新版本](https://img.shields.io/github/v/release/lyr05142002-dot/Q7Y?label=%E6%9C%80%E6%96%B0%E7%89%88)](https://github.com/lyr05142002-dot/Q7Y/releases/latest)
 [![OpenWrt 21.02 安装测试](https://github.com/lyr05142002-dot/Q7Y/actions/workflows/test.yml/badge.svg)](https://github.com/lyr05142002-dot/Q7Y/actions/workflows/test.yml)
 
-[下载](#下载) · [图文安装教程](#图文安装教程) · [手机版](#手机版) · [常用命令](#常用命令) · [出问题怎么办](#装好后自检出问题怎么办)
+[下载](#下载) · [图文安装教程](#图文安装教程) · [**改订阅 / 换机场**](#改订阅--换机场) · [手机版](#手机版) · [常用命令](#常用命令) · [出问题怎么办](#装好后自检出问题怎么办)
 
 </div>
 
@@ -20,6 +20,7 @@
 ## 特点
 
 - **一条命令装好**：登录路由器粘贴一条命令、一路回车。自动沿用 OpenClash 里已有的订阅、自动停用冲突插件，装不上自动切回原样
+- **订阅在后台网页里填**：路由器后台多一个「服务 → LiteBox」页面，订阅框在最上面，粘贴、点保存就生效，还能看到节点数、套餐流量和到期日
 - **GL 官方固件直接装**：GL 固件是 OpenWrt 21.02，[Open-Box](https://github.com/liandu2024/Open-Box) 要求 OpenWrt 24 以上装不了；LiteBox 专门按 21.02 写，不用刷机
 - **国内流量不进内核**：国内网站直接从 WAN 出去，不占代理的 CPU，还能用上路由器的硬件加速；境外 TCP 走 iptables 转发，比 TUN 省约 70% CPU
 - **省内存**：只有一个 mihomo 进程，常驻约 50MB，大流量下也不涨；超过上限自动重启
@@ -51,7 +52,7 @@
 | DNS | 中位 **0.2ms**（fake-ip 在本地应答） |
 | 打开网页 | 首字节 0.12 秒，直连同一节点是 0.14 秒，**没有额外延迟** |
 | 下载速度 | 43–47 MB/s，约为直连同一节点的 **90%** |
-| 分流 | ChatGPT / Claude / Gemini / Grok → 🤖 AI；百度 / B 站 / 淘宝 / QQ → 直连；Google / YouTube / GitHub → 代理 ✅ |
+| 分流 | ChatGPT / Claude / Gemini / Copilot / Grok → 各自的 AI 分组；x.com → X，gstatic → Google；百度 / B 站 / 淘宝 / QQ → 直连；YouTube / GitHub → 各自分组 ✅ |
 | 手机版 | 安卓配置启动后 2 秒下载好全部规则，分流结果同上，内存 48MB |
 | 稳定性 | 崩溃自动拉起、看门狗自愈、升级保留配置、重启自启、卸载还原，全部通过 |
 
@@ -155,10 +156,13 @@ ssh root@192.168.8.1
 curl -fsSL https://raw.githubusercontent.com/lyr05142002-dot/Q7Y/main/get.sh | sh
 ```
 
-接下来它会问两个问题，**都直接回车**：
+接下来它会问两件事：
 
-1. 检测到 OpenClash / Passwall 等：回车停用它们（只是停用，下载会趁它们还在工作时先完成）
-2. 检测到它们里面已有的机场订阅：回车直接用。没检测到时会让你粘贴订阅地址
+1. 检测到 OpenClash / Passwall 等：**直接回车**，停用它们（只是停用，下载会趁它们还在工作时先完成）
+2. **机场订阅地址**：
+   - 检测到 OpenClash 里已有的订阅时，问「直接用这个订阅吗」：**回车**就用它；想换一个就输入 `n` 回车，再粘贴新的
+   - 没检测到时会显示一个说明框，让你粘贴：在机场网站找「**复制订阅链接**」（也叫 Clash 订阅、一键订阅），复制后在 PowerShell 窗口里**点鼠标右键**粘贴，回车。粘错了（不是 `https://` 开头）会让你重新粘
+   - 暂时没有订阅就直接回车跳过，装好后按下面的「[改订阅 / 换机场](#改订阅--换机场)」再填
 
 然后等 1–3 分钟，看到「安装完成，已启动」就好了。
 
@@ -180,11 +184,33 @@ curl -fsSL https://raw.githubusercontent.com/lyr05142002-dot/Q7Y/main/get.sh | s
 
 ![面板里的分组（每个都带图标）](docs/img/05-groups.png)
 
+### 改订阅 / 换机场
+
+**方法一：在路由器后台网页里改（推荐）**
+
+浏览器打开路由器后台（OpenWrt / iStoreOS 是 `http://192.168.8.1` 或你平时进的地址），菜单 **服务 → LiteBox**。最上面就是订阅地址框：粘贴新的订阅地址，点「**保存并启动**」，十几秒后下面会显示加载了多少个节点、套餐还剩多少流量、什么时候到期。
+
+![路由器后台的 LiteBox 页面](docs/img/15-luci.png)
+
+<sub>截图来自云端测试用的 OpenWrt 21.02.7（自带 LuCI），订阅地址是演示数据。这个页面需要 LuCI 21.02 或更新版本（iStoreOS、ImmortalWrt 21.02+、OpenWrt 21.02+、GL 固件里装了 LuCI 的都行），安装时自动加上。第一次打开如果提示没有权限，退出后台重新登录一次。</sub>
+
+**方法二：一条命令**
+
+SSH 登录路由器（第 1 步），执行（把地址换成你的，**保留两边的单引号**）：
+
+```
+litebox sub '你的订阅地址'
+```
+
+它会自动去掉多复制的空格和引号，保存后重启并告诉你加载了几个节点。只想重新拉一次节点（机场更新了节点列表）：后台页面点「更新节点」，或者执行 `litebox sub-update`。
+
+概览页最上面也有一张「机场订阅」卡片，显示节点数、套餐流量、到期日，有「更新节点」按钮。
+
 ### 概览和路由测试
 
 安装完还会显示一个**概览和路由测试**链接（`litebox panel` 也能看到），形如 `http://192.168.8.1:9090/ui/litebox/#secret=面板密码`。面板顶部的「节点 · 连接」可以跳回 zashboard。
 
-- **概览**：百度 / Google / OpenAI / GitHub 的延迟和最近 24 次走势（分别经直连、🚀、🤖 AI、🚀 测，和平时访问走同一条线）；连接数、内存、上下行速率的实时曲线；规则命中排行和代理 / 直连占比；按月、按天的流量
+- **概览**：百度 / Google / OpenAI / GitHub 的延迟和最近 24 次走势（分别经直连和 Google、ChatGPT、GitHub 分组测，和平时访问走同一条线）；连接数、内存、上下行速率的实时曲线；规则命中排行和代理 / 直连占比；按月、按天的流量
 - **路由测试**：输入域名，浏览器真实访问一次，页面从内核记录里找出这次访问的 DNS 方式、进入内核的方式、命中的规则和完整线路。正在看页面的这台手机或电脑本身就是局域网终端，所以不用另外模拟设备
 
 ![路由测试](docs/img/13-route-test.png)
@@ -272,11 +298,12 @@ sh /tmp/litebox/install.sh
 |---|---|
 | 🚀 节点选择 | 默认代理出口：可选「♻️ 自动选择」、直连或任意节点 |
 | ♻️ 自动选择 | 每 10 分钟测一次速，自动选延迟最低的节点 |
-| 🤖 AI | ChatGPT / Claude / Gemini / Copilot / Grok 等单独选节点（AI 服务通常要固定地区） |
+| 🤖 AI | AI 服务的总开关：ChatGPT / Claude / Gemini / Copilot / Grok 默认都跟着它；作者 AI 名单里的其他 AI 服务（Groq、Genspark、Dify 等）也走它。AI 服务通常要固定地区，在这里选一个就行 |
+| ChatGPT、Claude、Gemini、Copilot、Grok | 常用 AI 各一个分组，带图标，默认跟随「🤖 AI」；想让某一个单独走别的节点（比如 Claude 用美国、Gemini 用新加坡）就改它 |
 | YouTube、Netflix、Google、GitHub、Telegram、X、TikTok | 常用境外应用各一个分组，带应用图标，默认跟随「🚀 节点选择」；想让某个应用单独走某个节点（比如 Netflix 选解锁好的地区）就在面板里改它 |
 | 🐟 漏网之鱼 | 没命中任何规则的流量，默认走代理，可改直连 |
 
-规则从上往下匹配：局域网直连 → 作者的直连名单 → 屏蔽走代理的 QUIC → AI 名单 → YouTube / Netflix / Google / GitHub / Telegram / X / TikTok（各自的分组）→ 作者的代理名单 → 国内域名直连 → 国内 IP 直连 → 其余走「漏网之鱼」。
+规则从上往下匹配：局域网直连 → 作者的直连名单 → 屏蔽走代理的 QUIC → ChatGPT / Claude / Gemini / Copilot / Grok 名单（各自的分组）→ YouTube / Netflix / Google / GitHub / Telegram / X / TikTok（各自的分组）→ 其余 AI 名单（🤖 AI）→ 作者的代理名单 → 国内域名直连 → 国内 IP 直连 → 其余走「漏网之鱼」。
 
 YouTube、Netflix、Google、GitHub、Telegram、X（Twitter）、TikTok 的规则来自 [MetaCubeX/meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat)（mrs 格式，每个只有几 KB），手机版 Shadowrocket 用的是 [blackmatrix7/ios_rule_script](https://github.com/blackmatrix7/ios_rule_script) 里对应的列表。手机版为了界面简洁，YouTube 和 Netflix 合成一个「📺 流媒体」分组，其余应用跟随「🚀 节点选择」。
 
@@ -291,12 +318,14 @@ YouTube、Netflix、Google、GitHub、Telegram、X（Twitter）、TikTok 的规�
 | `litebox status` | 运行状态、当前 / 峰值内存、面板地址 |
 | `litebox doctor` | **出问题时先跑这个**：一键自检并给出处理建议 |
 | `litebox mem` | 详细内存信息 |
-| `litebox sub '地址'` | 更换订阅（不带地址 = 查看当前订阅） |
+| `litebox sub '地址'` | 更换订阅（不带地址 = 查看当前订阅）。也可以在路由器后台「服务 → LiteBox」里改 |
+| `litebox sub-update` | 立即重新下载订阅里的节点 |
 | `litebox panel` | 显示面板的一键登录链接、密码和概览页链接 |
 | `litebox route 域名` | 路由器自己访问一次，看 DNS、命中的规则和线路 |
 | `litebox restart` / `stop` / `start` | 重启 / 停止 / 启动 |
 | `litebox log` | 最近的内核日志 |
 | `litebox direct` | **上不了网时用**：立即恢复直连并关闭开机自启 |
+| `litebox enable` | 重新启用（开机自启并启动），和 `direct` 相反 |
 | `litebox update` | 升级到最新版，配置和订阅保留（连不上 GitHub 时加 `--mirror https://ghfast.top`） |
 | `litebox accel` / `on` / `off` | 查看 / 开关流量加速（国内 IP 不进内核、TCP 走 iptables 转发，默认开） |
 | `litebox quic on` / `off` | 屏蔽 / 放行走代理的 QUIC（默认屏蔽） |
@@ -328,6 +357,7 @@ YouTube、Netflix、Google、GitHub、Telegram、X（Twitter）、TikTok 的规�
 - 国内 IP 不进内核需要 ipset 和 ip-full（GL 固件一般自带）。没有时国内流量照常经过内核，只是多占 CPU
 - 路由器自己发出的流量（比如 `litebox update`）仍全部经过内核，不影响局域网设备
 - 访客网络（guest）默认不走代理
+- 路由器后台的「服务 → LiteBox」页面需要 LuCI 21.02 或更新版本。GL 官方固件的 LuCI 在 GL 后台「系统 → 高级设置」里，没装 LuCI 的话用 `litebox sub` 改订阅；老的 18.06 版 LuCI 不加这个页面
 - 设备自己设置的 DoH（比如浏览器的「安全 DNS」）会绕过路由器 DNS，按 IP 分流时可能不准，建议关掉
 - 按 GL 固件的 OpenWrt 21.02 设计，在云端的 OpenWrt 21.02.7 上完整测试过，v0.4.0 起已在一台 GL-MT3600BE 上实际运行。第一次安装时建议留一根网线，出问题就执行 `litebox direct`
 
@@ -339,5 +369,6 @@ YouTube、Netflix、Google、GitHub、Telegram、X（Twitter）、TikTok 的规�
 
 - [mihomo](https://github.com/MetaCubeX/mihomo) v1.19.31：GPL-3.0。对应源码见 [官方 v1.19.31 标签](https://github.com/MetaCubeX/mihomo/tree/v1.19.31)，本仓库的 Release 里也附了一份源码包
 - [zashboard](https://github.com/Zephyruso/zashboard) v3.29.1：MIT
+- 分组图标：ChatGPT / Claude / Gemini / Copilot / Grok 来自 [LobeHub lobe-icons](https://github.com/lobehub/lobe-icons)（MIT），其余来自 [Simple Icons](https://github.com/simple-icons/simple-icons)（CC0）；商标归各自的所有者
 
 分流规则在安装时从 [liandu2024/clash](https://github.com/liandu2024/clash) 和 [MetaCubeX/meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) 下载，不包含在安装包里。

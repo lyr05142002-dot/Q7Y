@@ -11,3 +11,10 @@ dist-no-fonts.zip（zashboard v3.29.1 网页面板）
   项目：https://github.com/Zephyruso/zashboard
   许可证：MIT（见 zashboard-LICENSE.txt）
   SHA256：21371cd111b6b3d87774f3ea3ddeacdcb0f6aff8690a16d652daa3ea6e3b0145
+
+分组图标（写在 config.yaml 模板、概览页和路由器后台页面里的 SVG 路径）
+  ChatGPT / Claude / Gemini / Copilot / Grok：LobeHub lobe-icons，MIT（见 lobe-icons-LICENSE.txt）
+    https://github.com/lobehub/lobe-icons
+  YouTube / Netflix / Google / GitHub / Telegram / X / TikTok / 百度：Simple Icons，CC0
+    https://github.com/simple-icons/simple-icons
+  各图标对应的商标归各自的所有者

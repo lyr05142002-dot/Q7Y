@@ -92,6 +92,12 @@ run_round() { # 名字 docker网络参数
 	check "doctor 能跑完" x 'litebox doctor | grep -q 结论'
 	check "doctor 不泄露订阅 token" x '! litebox doctor | grep -q SECRET'
 	check "订阅地址原样保存（含 & 和单引号）" x '[ "$(litebox sub)" = "http://127.0.0.1:8765/sub.yaml?token=SECRET&a=it'"'"'s" ]'
+	check "粘贴时带的空格和引号会去掉" x 'litebox sub "  \"http://127.0.0.1:8765/sub.yaml?p=1\"  " --no-wait && [ "$(litebox sub)" = "http://127.0.0.1:8765/sub.yaml?p=1" ]'
+	check "不是网址的订阅会被拒绝" x '! litebox sub "abc" && [ "$(litebox sub)" = "http://127.0.0.1:8765/sub.yaml?p=1" ]'
+	x 'litebox sub "http://127.0.0.1:8765/sub.yaml?token=SECRET&a=it'"'"'s" --no-wait' >/dev/null 2>&1 || true
+	check "luci-status 输出合法 JSON" x 'litebox luci-status | jsonfilter -e "@.running" | grep -q true && litebox luci-status | jsonfilter -e "@.sub" | grep -q "^http://127.0.0.1:8765/"'
+	# 这个镜像自带 LuCI 21.02：后台页面要装上，菜单和权限文件要是合法 JSON
+	check "LuCI 后台页面装上了" x '[ -f /www/luci-static/resources/view/litebox.js ] && jsonfilter -i /usr/share/luci/menu.d/luci-app-litebox.json -e "@[\"admin/services/litebox\"].action.path" | grep -qx litebox && jsonfilter -i /usr/share/rpcd/acl.d/luci-app-litebox.json -e "@[\"luci-app-litebox\"].write.file" >/dev/null'
 	check "分组带图标" x 'grep -q "^    icon: '"'"'data:image/svg+xml," /etc/litebox/config.yaml'
 	# 离线安装时面板还没下载：这时不能先建 ui/ 目录，否则内核以为面板已存在、不再下载
 	check "面板没下载时不提前建面板目录" x '[ -f /etc/litebox/ui/index.html ] || [ ! -e /etc/litebox/ui ]'
@@ -125,11 +131,15 @@ run_round() { # 名字 docker网络参数
 	out=$(x 'sh /root/litebox/install.sh --reset-config < /dev/null 2>&1') || true
 	check "--reset-config 保留订阅" x '[ "$(litebox sub)" = "http://127.0.0.1:8765/sub.yaml?token=SECRET&a=it'"'"'s" ]'
 	check "--reset-config 留下旧配置备份" x '[ -f /etc/litebox/config.yaml.old ]'
+	x 'cp /etc/litebox/config.yaml /root/config.keep; sed -i "s|^    url: .*# LITEBOX_SUB\$|    url: '"'"'https://sub.invalid/litebox-placeholder'"'"' # LITEBOX_SUB|" /etc/litebox/config.yaml; /etc/init.d/litebox restart; sleep 2' >/dev/null 2>&1 || true
+	check "没填订阅时不启动，DNS 不接管" x '! pidof mihomo && ! uci -q get dhcp.@dnsmasq[0].server | grep -q 1053'
+	x 'cp /root/config.keep /etc/litebox/config.yaml; /etc/init.d/litebox start; sleep 2' >/dev/null 2>&1 || true
 
 	x 'litebox uninstall --purge' >/dev/null 2>&1 || true
 	check "卸载后服务和文件清除" x '[ ! -e /etc/litebox ] && [ ! -e /usr/bin/litebox ] && ! pidof mihomo'
 	check "卸载后 DNS 还原" x '! uci -q get dhcp.@dnsmasq[0].server | grep -q 1053'
 	check "卸载后防火墙还原" x '! uci show firewall | grep -q litebox'
+	check "卸载后 LuCI 页面删掉" x '[ ! -e /www/luci-static/resources/view/litebox.js ] && [ ! -e /usr/share/luci/menu.d/luci-app-litebox.json ] && [ ! -e /usr/share/rpcd/acl.d/luci-app-litebox.json ]'
 	docker rm -f "$c" >/dev/null
 }
 
@@ -161,6 +171,14 @@ chmod 755 /etc/init.d/openclash; touch /etc/config/openclash
 uci set openclash.sub1=config_subscribe; uci set openclash.sub1.address="http://127.0.0.1:8765/sub.yaml?token=FROM_OPENCLASH"; uci commit openclash
 /etc/init.d/openclash enable; /etc/init.d/openclash start; sleep 1'
 	check "（准备）假 OpenClash 在运行并接管了 DNS" x '/etc/init.d/openclash running && uci -q get dhcp.@dnsmasq[0].server | grep -q 7874'
+	x 'cat > /etc/init.d/shadowsocksr <<"EOF"
+#!/bin/sh /etc/rc.common
+START=99
+running() { return 0; }
+start() { :; }
+stop() { :; }
+EOF
+chmod 755 /etc/init.d/shadowsocksr; /etc/init.d/shadowsocksr disable'
 
 	out=$(x 'sh /root/litebox/install.sh < /dev/null 2>&1') || true
 	if echo "$out" | grep -q -- '--yes'; then ok "没有终端又没加 --yes 时拒绝安装"; else bad "没有终端又没加 --yes 时拒绝安装"; fi
@@ -170,6 +188,7 @@ uci set openclash.sub1=config_subscribe; uci set openclash.sub1.address="http://
 	echo "$out" | sed 's/^/    | /'
 	if echo "$out" | grep -q '安装完成，已启动'; then ok "加 --yes 安装完成"; else bad "加 --yes 安装完成"; return; fi
 	check "沿用了 OpenClash 里的订阅" x '[ "$(litebox sub)" = "http://127.0.0.1:8765/sub.yaml?token=FROM_OPENCLASH" ]'
+	check "关着但 running 乱报的插件不当成冲突" x '! grep -qx shadowsocksr /etc/litebox/others-stopped && ! /etc/init.d/shadowsocksr enabled'
 	check "OpenClash 已停止并关闭自启" x '! /etc/init.d/openclash running && ! /etc/init.d/openclash enabled'
 	check "DNS 从 7874 换成了 LiteBox" x 'uci -q get dhcp.@dnsmasq[0].server | grep -q "127.0.0.1#1053" && ! uci -q get dhcp.@dnsmasq[0].server | grep -q 7874'
 	check "LiteBox 在运行" x 'litebox status | grep -q 运行中'
@@ -216,12 +235,15 @@ run_ipset() {
 	check "mangle 给国内 IP 打标记" x 'iptables -w -t mangle -S LITEBOX_MARK | grep -q "match-set litebox_cn dst"'
 	check "nat 转发 TCP，国内 IP 跳过" x 'iptables -w -t nat -S LITEBOX_NAT | grep -q "match-set litebox_cn dst -j RETURN" && iptables -w -t nat -S LITEBOX_NAT | grep -q "REDIRECT --to-ports 7892"'
 	check "doctor 显示加速生效" x 'litebox doctor | grep -q "国内 IP 直连，不进内核"'
+	check "老版本 LuCI（18.06，没有 menu.d）不装后台页面" x '[ ! -e /www/luci-static/resources/view/litebox.js ] && [ ! -e /usr/share/luci/menu.d/luci-app-litebox.json ]'
 	# 面板首页已在（上面放的占位文件），概览页必须到位
 	check "概览页放进了面板目录" x '[ -f /etc/litebox/ui/litebox/index.html ] && [ -L /etc/litebox/ui/litebox/traffic.txt ]'
 	check "面板能打开概览页和流量记录" x 'litebox watchdog; wget -q -O - http://127.0.0.1:9090/ui/litebox/ | grep -q "LiteBox 概览" && wget -q -O - http://127.0.0.1:9090/ui/litebox/traffic.txt | grep -q "^$(date +%F) "'
 	check "面板目录被换掉后看门狗补回概览页" x 'rm -rf /etc/litebox/ui/litebox && litebox watchdog && [ -f /etc/litebox/ui/litebox/index.html ]'
 	x '/etc/init.d/firewall restart >/dev/null 2>&1; for i in $(seq 1 30); do iptables -w -t nat -S PREROUTING | grep -q LITEBOX_NAT && break; sleep 1; done' || true
 	check "重载防火墙后规则自动加回" x 'iptables -w -t nat -S PREROUTING | grep -q LITEBOX_NAT && iptables -w -t mangle -S PREROUTING | grep -q LITEBOX_MARK'
+	x '/usr/lib/litebox/firewall.sh start & /usr/lib/litebox/firewall.sh start & /etc/init.d/firewall reload >/dev/null 2>&1; wait; sleep 3; for i in $(seq 1 30); do [ -d /tmp/litebox-fw.lock ] || break; sleep 1; done' >/dev/null 2>&1 || true
+	check "同时启动几次，规则不重复" x '[ "$(iptables -w -t nat -S PREROUTING | grep -c LITEBOX_NAT)" = 1 ] && [ "$(iptables -w -t mangle -S PREROUTING | grep -c LITEBOX_MARK)" = 1 ] && [ "$(ip rule | grep -c "^8999:")" = 1 ] && grep -q "^bypass:" /tmp/litebox-fw.state'
 	x 'litebox stop >/dev/null 2>&1; sleep 1' || true
 	check "stop 后规则、策略路由、ipset 全部撤掉" x '! iptables -w -t nat -S | grep -q LITEBOX && ! ip rule | grep -q 8999 && ! ipset list -n | grep -q litebox'
 	x 'litebox start >/dev/null 2>&1; for i in $(seq 1 30); do [ -f /tmp/litebox-fw.state ] && break; sleep 1; done' || true

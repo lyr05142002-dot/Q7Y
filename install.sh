@@ -50,6 +50,9 @@ usage() {
 EOF
 }
 
+# 粘贴时常带进来的空格、换行、引号去掉
+clean_url() { printf '%s' "$1" | tr -d '\r\n' | sed -e "s/^[[:space:]\"']*//" -e "s/[[:space:]\"']*\$//"; }
+
 SUB_URL=""
 PANEL_PORT=""
 USER_MIRROR=""
@@ -72,11 +75,14 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
+SUB_URL=$(clean_url "$SUB_URL")
+case "$SUB_URL" in ""|http://*|https://*) ;; *) die "--sub 后面要跟以 http:// 或 https:// 开头的订阅地址" ;; esac
+
 # ---------- 环境检查 ----------
 
 [ "$(id -u)" = 0 ] || die "请以 root 身份运行。"
 [ -f /etc/openwrt_release ] && [ -f /etc/rc.common ] || die "只支持 OpenWrt 系统（包括 GL.iNet 官方固件）。"
-for f in config.yaml.tpl litebox litebox.init litebox-firewall.sh panel.html; do
+for f in config.yaml.tpl litebox litebox.init litebox-firewall.sh panel.html luci-litebox.js luci-litebox-menu.json luci-litebox-acl.json; do
 	[ -f "$SCRIPT_DIR/files/$f" ] || die "安装包不完整，缺少 files/$f。请重新下载安装包，把整个 litebox 文件夹上传后再运行。"
 done
 
@@ -125,14 +131,47 @@ ask_yes() { # 问题；默认是
 }
 mask_url() { echo "$1" | sed -E 's#^(https?://[^/?]+).*#\1/…#'; }
 
-# 已启用的其他代理插件：同时运行会抢流量和 DNS，装好后要停用（只停用，配置保留）
+# 问订阅地址：说清楚是什么、去哪复制；粘错了让重新粘，最多三次
+ask_sub() {
+	local a n=0
+	cat > /dev/tty <<'EOT'
+
+┌────────────────────────── 机场订阅地址 ──────────────────────────┐
+  订阅地址就是机场给你的「Clash 订阅链接」，以 https:// 开头，
+  在机场网站的「仪表盘 / 一键订阅 / 复制订阅链接」里复制。
+
+  粘贴方法：在这个窗口里点鼠标右键，或按 Ctrl+V（苹果电脑按 ⌘V），粘贴好后按回车。
+  暂时没有就直接按回车，装好后在路由器后台「服务 → LiteBox」里填，
+  或执行 litebox sub '订阅地址'。
+└──────────────────────────────────────────────────────────────────┘
+EOT
+	while [ "$n" -lt 3 ]; do
+		printf '订阅地址：' > /dev/tty
+		read -r a < /dev/tty || a=""
+		a=$(clean_url "$a")
+		case "$a" in
+			"") SUB_URL=""; return 0 ;;
+			http://*|https://*) SUB_URL=$a; info "已收到订阅：$(mask_url "$a")"; return 0 ;;
+		esac
+		echo "这不像订阅地址（要以 https:// 或 http:// 开头），请重新粘贴；没有就直接回车。" > /dev/tty
+		n=$((n + 1))
+	done
+	SUB_URL=""
+}
+
+# 已启用的其他代理插件：同时运行会抢流量和 DNS，装好后要停用（只停用，配置保留）。
+# 不信插件脚本自己的 running：有些固件里 passwall、shadowsocksr 没有进程也说「在运行」，
+# 误判会把本来就关着的插件记下来，切回时反而把它打开。只看开机自启、procd 实例和真实进程
 OTHER_SVCS="openclash nikki mihomo passwall passwall2 shadowsocksr ssr-plus vssr bypass sing-box openbox homeproxy"
+svc_active() { # 插件名
+	"/etc/init.d/$1" enabled 2>/dev/null && return 0
+	ubus call service list "{\"name\":\"$1\"}" 2>/dev/null | jsonfilter -e "@[\"$1\"].instances.*.pid" >/dev/null 2>&1 && return 0
+	ps w 2>/dev/null | grep -v grep | grep -q "/etc/$1[/ ]"
+}
 OTHERS=""
 for svc in $OTHER_SVCS; do
 	[ -x "/etc/init.d/$svc" ] || continue
-	if "/etc/init.d/$svc" running >/dev/null 2>&1 || "/etc/init.d/$svc" enabled 2>/dev/null; then
-		OTHERS="$OTHERS $svc"
-	fi
+	svc_active "$svc" && OTHERS="$OTHERS $svc"
 done
 OTHERS=${OTHERS# }
 if [ -n "$OTHERS" ]; then
@@ -146,18 +185,17 @@ if [ -n "$OTHERS" ]; then
 	fi
 fi
 
-# 新装且没给 --sub 时，先看看其他插件里有没有现成的订阅
-if [ -z "$SUB_URL" ] && { [ ! -f "$CONFIG" ] || [ "$RESET_CONFIG" = 1 ]; }; then
+# 新装（或之前装了但没填订阅）且没给 --sub 时，先看看其他插件里有没有现成的订阅，没有就问
+if [ -z "$SUB_URL" ] && { [ ! -f "$CONFIG" ] || [ "$RESET_CONFIG" = 1 ] || grep -q "$SUB_PLACEHOLDER" "$CONFIG"; }; then
 	found=$(uci -q show openclash 2>/dev/null | sed -n "s/^openclash\.[^.]*\.address='\(https\{0,1\}:\/\/.*\)'$/\1/p" | head -n 1)
 	[ -n "$found" ] || found=$(uci -q show passwall 2>/dev/null | sed -n "s/^passwall\.[^.]*\.url='\(https\{0,1\}:\/\/.*\)'$/\1/p" | head -n 1)
 	if [ -n "$found" ] && { [ ! -f "$CONFIG" ] || ! grep -q "LITEBOX_SUB" "$CONFIG" || grep -q "$SUB_PLACEHOLDER" "$CONFIG"; }; then
 		echo
 		info "检测到已有的机场订阅：$(mask_url "$found")"
-		ask_yes "[litebox] 直接用这个订阅吗？" && SUB_URL=$found
+		ask_yes "[litebox] 直接用这个订阅吗？（选 n 可以粘贴另一个）" && SUB_URL=$found
 	fi
-	if [ -z "$SUB_URL" ] && [ ! -f "$CONFIG" ] && [ "$TTY" = 1 ]; then
-		printf '[litebox] 请粘贴机场订阅地址后回车（没有可直接回车，稍后用 litebox sub 设置）：' > /dev/tty
-		read -r SUB_URL < /dev/tty || SUB_URL=""
+	if [ -z "$SUB_URL" ] && { [ ! -f "$CONFIG" ] || grep -q "$SUB_PLACEHOLDER" "$CONFIG"; } && [ "$TTY" = 1 ]; then
+		ask_sub
 	fi
 fi
 echo
@@ -242,10 +280,18 @@ rm -f "$TMP/$asset"
 
 # ---------- zashboard 面板 ----------
 
-info "安装 zashboard 面板 $UI_VER ..."
-if ! command -v unzip >/dev/null 2>&1; then
-	{ opkg update && opkg install unzip; } >/dev/null 2>&1
+# unzip 解压面板；curl 给 litebox 查节点、自检、路由测试、流量统计用。缺的一次装上，装不上也不影响安装
+need=""
+command -v unzip >/dev/null 2>&1 || need="$need unzip"
+command -v curl >/dev/null 2>&1 || need="$need curl"
+if [ -n "$need" ]; then
+	info "安装依赖：$need ..."
+	# shellcheck disable=SC2086
+	{ opkg update && opkg install $need; } >/dev/null 2>&1
+	command -v curl >/dev/null 2>&1 || warn "没装上 curl：能用，只是看不到节点数，自检和路由测试也用不了。以后可以执行 opkg update && opkg install curl"
 fi
+
+info "安装 zashboard 面板 $UI_VER ..."
 if ! command -v unzip >/dev/null 2>&1; then
 	warn "没有 unzip，跳过面板预装；内核首次启动时会自己下载面板。"
 elif fetch_verified "https://github.com/Zephyruso/zashboard/releases/download/$UI_VER/$UI_ASSET" "$TMP/ui.zip" "$UI_SHA"; then
@@ -305,18 +351,20 @@ if [ -n "$OTHERS" ]; then
 		grep -qx "$svc" "$HOME_DIR/others-stopped" 2>/dev/null || echo "$svc" >> "$HOME_DIR/others-stopped"
 	done
 	sleep 2
-	# 个别插件停掉后没把 dnsmasq 改回来，DNS 还指向已经不在的端口：改回系统默认
-	srv=$(uci -q get dhcp.@dnsmasq[0].server)
-	case "$srv" in
-		*127.0.0.1#*)
-			case "$srv" in *"127.0.0.1#1053"*) ;; *)
-				uci -q delete dhcp.@dnsmasq[0].server
-				uci -q delete dhcp.@dnsmasq[0].noresolv
-				uci commit dhcp
-				/etc/init.d/dnsmasq restart >/dev/null 2>&1
-				info "  已把 DNS 改回系统默认" ;;
-			esac ;;
-	esac
+	# 个别插件停掉后没把 dnsmasq 改回来，DNS 还指向已经没人监听的本机端口：改回系统默认。
+	# 还有程序在监听的（比如 AdGuard Home）不动
+	stale=0
+	for p in $(uci -q get dhcp.@dnsmasq[0].server | tr ' ' '\n' | sed -n 's/^127\.0\.0\.1#\([0-9][0-9]*\)$/\1/p'); do
+		[ "$p" = 1053 ] && continue
+		netstat -lun 2>/dev/null | awk '{ print $4 }' | grep -q "[:.]$p\$" || stale=1
+	done
+	if [ "$stale" = 1 ]; then
+		uci -q delete dhcp.@dnsmasq[0].server
+		uci -q delete dhcp.@dnsmasq[0].noresolv
+		uci commit dhcp
+		/etc/init.d/dnsmasq restart >/dev/null 2>&1
+		info "  已把 DNS 改回系统默认"
+	fi
 fi
 
 # ---------- 设置与配置文件 ----------
@@ -401,6 +449,19 @@ chmod 755 /usr/bin/litebox /etc/init.d/litebox "$BIN_DIR/firewall.sh"
 cp "$SCRIPT_DIR/files/panel.html" "$BIN_DIR/panel.html"
 rm -f "$HOME_DIR/ui/litebox/index.html"
 /usr/bin/litebox panel-sync
+# 路由器后台（LuCI 21.02 及以后）加一个「服务 → LiteBox」页面：填订阅、看状态、打开面板。
+# 老版本 LuCI（18.06 等）没有 menu.d，跳过
+LUCI=0
+if [ -d /usr/share/luci/menu.d ] && [ -d /www/luci-static/resources ]; then
+	mkdir -p /www/luci-static/resources/view /usr/share/rpcd/acl.d
+	tr -d '\r' < "$SCRIPT_DIR/files/luci-litebox.js" > /www/luci-static/resources/view/litebox.js
+	tr -d '\r' < "$SCRIPT_DIR/files/luci-litebox-menu.json" > /usr/share/luci/menu.d/luci-app-litebox.json
+	tr -d '\r' < "$SCRIPT_DIR/files/luci-litebox-acl.json" > /usr/share/rpcd/acl.d/luci-app-litebox.json
+	chmod 644 /www/luci-static/resources/view/litebox.js /usr/share/luci/menu.d/luci-app-litebox.json /usr/share/rpcd/acl.d/luci-app-litebox.json
+	rm -f /tmp/luci-indexcache* /tmp/luci-modulecache
+	/etc/init.d/rpcd reload >/dev/null 2>&1
+	LUCI=1
+fi
 
 # 局域网流量要能转发进 tun 网卡；fw3 / fw4 都认这套 uci 配置
 uci -q delete firewall.litebox_zone
@@ -433,36 +494,49 @@ echo '*/5 * * * * /usr/bin/litebox watchdog # litebox' >> /etc/crontabs/root
 
 LAN_IP=$(uci -q get network.lan.ipaddr)
 LAN_IP=${LAN_IP%%/*}
+LAN_IP=${LAN_IP:-192.168.8.1}
 echo
 if grep -q "$SUB_PLACEHOLDER" "$CONFIG"; then
-	info "安装完成，但还没有设置订阅，所以暂不启动（网络不受影响）。"
-	info "设置订阅后会自动启动：litebox sub '你的订阅地址'"
-else
-	# 首次安装时服务还没在运行，restart 里的 stop 会打印 "Command failed: Not found"，所以分开写
-	/etc/init.d/litebox stop >/dev/null 2>&1
-	/etc/init.d/litebox start
-	ok=0
-	for i in 1 2 3 4 5 6 7 8 9 10; do
-		sleep 1
-		[ -n "$(ubus call service list '{"name":"litebox"}' 2>/dev/null | jsonfilter -e '@.litebox.instances.*.pid' 2>/dev/null)" ] && ok=1 && break
-	done
-	if [ "$ok" = 0 ]; then
-		warn "LiteBox 没能启动。"
-		if [ -s "$HOME_DIR/others-stopped" ]; then
-			/usr/bin/litebox switch-back
-			die "已自动切回原来的代理插件，网络不受影响。把 litebox log 的输出发出来求助。"
-		fi
-		/usr/bin/litebox direct >/dev/null 2>&1
-		die "已恢复直连，网络不受影响。把 litebox log 的输出发出来求助。"
+	info "安装完成，但还没有填订阅，所以暂不启动（网络不受影响）。"
+	echo
+	echo "┌───────────────────── 下一步：填机场订阅地址 ─────────────────────┐"
+	if [ "$LUCI" = 1 ]; then
+		echo "  方法一（推荐）：浏览器打开路由器后台 → 服务 → LiteBox，"
+		echo "                  把订阅地址粘贴到最上面的框里，点「保存并启动」"
+		echo "  方法二：在这里执行（把订阅地址换成你的，保留两边的单引号）："
+	else
+		echo "  在这里执行（把订阅地址换成你的，保留两边的单引号）："
 	fi
-	info "安装完成，已启动。"
+	echo "      litebox sub '订阅地址'"
+	echo "└──────────────────────────────────────────────────────────────────┘"
+	exit 0
 fi
-LAN_IP=${LAN_IP:-192.168.8.1}
+# 首次安装时服务还没在运行，restart 里的 stop 会打印 "Command failed: Not found"，所以分开写
+/etc/init.d/litebox stop >/dev/null 2>&1
+/etc/init.d/litebox start
+ok=0
+for i in 1 2 3 4 5 6 7 8 9 10; do
+	sleep 1
+	[ -n "$(ubus call service list '{"name":"litebox"}' 2>/dev/null | jsonfilter -e '@.litebox.instances.*.pid' 2>/dev/null)" ] && ok=1 && break
+done
+if [ "$ok" = 0 ]; then
+	warn "LiteBox 没能启动。"
+	if [ -s "$HOME_DIR/others-stopped" ]; then
+		/usr/bin/litebox switch-back
+		die "已自动切回原来的代理插件，网络不受影响。把 litebox log 的输出发出来求助。"
+	fi
+	/usr/bin/litebox direct >/dev/null 2>&1
+	die "已恢复直连，网络不受影响。把 litebox log 的输出发出来求助。"
+fi
+info "安装完成，已启动。"
 cat <<EOF
 
-  一键登录：http://$LAN_IP:$PANEL_PORT/ui/#/setup?hostname=$LAN_IP&port=$PANEL_PORT&secret=$SECRET
+  一键登录面板：http://$LAN_IP:$PANEL_PORT/ui/#/setup?hostname=$LAN_IP&port=$PANEL_PORT&secret=$SECRET
   （复制到浏览器打开即可。手动登录时：主机 $LAN_IP，端口 $PANEL_PORT，密码 $SECRET）
   概览和路由测试：http://$LAN_IP:$PANEL_PORT/ui/litebox/#secret=$SECRET
+EOF
+[ "$LUCI" = 1 ] && echo "  改订阅、看状态：路由器后台 → 服务 → LiteBox"
+cat <<EOF
 
-  常用命令：litebox status | litebox doctor | litebox mem | litebox sub <地址> | litebox route <域名> | litebox panel | litebox direct
+  常用命令：litebox status | litebox doctor | litebox sub '订阅地址' | litebox route 域名 | litebox panel | litebox direct
 EOF

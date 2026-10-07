@@ -23,6 +23,27 @@ ACCEL=1
 [ -f "$CONF" ] && . "$CONF"
 
 IPT="iptables -w"
+SELF=/usr/lib/litebox/firewall.sh
+LOCK=/tmp/litebox-fw.lock
+
+# 开机时 init 脚本和防火墙重载可能同时调用本脚本，两边一起加删规则会乱，用目录锁排队。
+# 持锁的进程已经不在了（比如被杀掉）就当锁失效，不会卡死
+take_lock() {
+	local i=0 owner
+	while ! mkdir "$LOCK" 2>/dev/null; do
+		owner=$(cat "$LOCK/pid" 2>/dev/null)
+		if [ -n "$owner" ] && [ ! -d "/proc/$owner" ]; then
+			rm -rf "$LOCK"
+			continue
+		fi
+		i=$((i + 1))
+		[ "$i" -ge 60 ] && return 1
+		sleep 1
+	done
+	echo $$ > "$LOCK/pid"
+	trap 'rm -rf "$LOCK"' EXIT
+	trap 'rm -rf "$LOCK"; exit 1' INT TERM
+}
 
 core_running() {
 	ubus call service list '{"name":"litebox"}' 2>/dev/null | jsonfilter -e '@.litebox.instances.*.pid' >/dev/null 2>&1
@@ -132,10 +153,11 @@ start() {
 }
 
 case "${1:-reload}" in
-	start) start ;;
-	stop) stop ;;
+	start) take_lock || exit 1; start ;;
+	stop) take_lock || exit 1; stop ;;
 	reload)
-		# fw3 重载会清掉自定义规则，这里按内核是否在运行重新加上；放后台，不拖慢防火墙重载
-		if core_running; then (start >/dev/null 2>&1 &) else stop; fi ;;
+		# fw3 重载会清掉自定义规则，这里按内核是否在运行重新加上；放后台（单独的进程，自己拿锁），不拖慢防火墙重载。
+		# fw3 是用 sh -c ". 脚本路径" 调用的，所以这里写死路径
+		if core_running; then ("$SELF" start >/dev/null 2>&1 &); else take_lock || exit 1; stop; fi ;;
 	*) echo "用法：$0 start|stop|reload" >&2; exit 1 ;;
 esac

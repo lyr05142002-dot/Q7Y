@@ -27,6 +27,9 @@ usage() {
   log               查看最近的内核日志
   panel             显示面板地址和密钥
   direct            紧急恢复直连（停止并禁用开机自启）
+  update [--mirror URL]  升级到最新版（配置和订阅保留）
+  quic on|off       屏蔽 / 放行走代理的 QUIC（默认屏蔽，YouTube 等更流畅）
+  stack [system|gvisor|mixed]  查看或切换 TUN 协议栈（开着硬件加速出问题时试 gvisor）
   uninstall [--purge]  卸载（--purge 同时删除配置和订阅）
 EOF
 }
@@ -138,11 +141,31 @@ cmd_sub() {
 	echo "订阅已更新，内核已重启。"
 }
 
-# 由 cron 每 5 分钟调用：内存超过硬上限就重启内核
+# 由 cron 每 5 分钟调用：内存超过硬上限就重启内核；并保证「内核在跑」和「DNS 交给内核」两件事一致，
+# 免得内核反复崩溃、procd 放弃拉起后 DNS 还指向它，全家解析不了域名
 cmd_watchdog() {
 	local pid rss
 	pid=$(core_pid)
-	[ -n "$pid" ] || return 0
+	if [ -z "$pid" ]; then
+		# dnsmasq.bak 还在 = 应该在运行（stop / direct 都会把它删掉）
+		[ -f "$DNS_BAK" ] || return 0
+		logger -t litebox "内核没有运行，尝试重新启动"
+		"$INIT" start
+		sleep 5
+		if [ -z "$(core_pid)" ]; then
+			dns_off
+			logger -t litebox "内核起不来，已恢复原来的 DNS，局域网暂时直连。排查：litebox doctor"
+		fi
+		return 0
+	fi
+	if [ ! -f "$DNS_BAK" ] && "$INIT" enabled; then
+		# 刚执行 stop 时先恢复 DNS、再结束进程，中间这一下不能误判成「内核恢复了」，等几秒再确认
+		sleep 3
+		if [ -n "$(core_pid)" ] && [ ! -f "$DNS_BAK" ]; then
+			logger -t litebox "内核已恢复运行，重新接管 DNS"
+			dns_on
+		fi
+	fi
 	rss=$(status_kb "$pid" VmRSS)
 	[ -n "$rss" ] || return 0
 	if [ "$((rss / 1024))" -gt "$MEM_HARD_MB" ]; then
@@ -327,6 +350,14 @@ cmd_doctor() {
 			d_hint "/etc/init.d/$svc stop && /etc/init.d/$svc disable"
 		fi
 	done
+	if [ "$(uci -q get firewall.@defaults[0].flow_offloading)" = 1 ] || [ "$(uci -q get firewall.@defaults[0].flow_offloading_hw)" = 1 ]; then
+		d_warn "开着流量卸载（硬件加速），少数情况下会让部分流量绕过代理，或有线直连大文件出错（当前协议栈：$(sed -n 's/^  stack: \([a-z]*\).*/\1/p' "$CONFIG")）"
+		d_hint "遇到这类问题先试 litebox stack gvisor；还不行就在 GL 管理后台关闭「网络加速 / 硬件加速」"
+	fi
+	if [ -n "$(ip -6 route show default 2>/dev/null)" ] && [ "$(uci -q get dhcp.lan.ra)" != disabled ] && [ -n "$(uci -q get dhcp.lan.ra)" ]; then
+		d_warn "局域网开着 IPv6，设备可能经 IPv6 直连、绕过代理"
+		d_hint "在 GL 管理后台「网络 → IPv6」里关闭 IPv6"
+	fi
 	grep -q 'litebox watchdog' /etc/crontabs/root 2>/dev/null || d_warn "内存看门狗没有配置（重新运行 install.sh 可恢复）"
 	errs=$(logread 2>/dev/null | grep -E 'litebox|mihomo' | grep -iE 'level=(error|fatal)|panic' | tail -n 3)
 	if [ -n "$errs" ]; then
@@ -344,6 +375,59 @@ cmd_doctor() {
 		echo "上不了网时先执行 litebox direct 恢复直连。求助时把以上输出整段发出去即可（不含订阅地址和面板密码）。"
 		return 1
 	fi
+}
+
+# 切换配置里带标记的一行，检查通过后重启生效；不通过就还原
+edit_config() { # 说明 sed表达式
+	cp "$CONFIG" "$CONFIG.bak"
+	sed -i "$2" "$CONFIG"
+	if ! check_config >/dev/null 2>&1; then
+		mv -f "$CONFIG.bak" "$CONFIG"
+		die "修改后配置检查未通过，已还原。"
+	fi
+	rm -f "$CONFIG.bak"
+	[ -n "$(core_pid)" ] && "$INIT" restart
+	echo "$1"
+}
+
+cmd_quic() {
+	case "${1:-}" in
+		on) edit_config "已屏蔽走代理的 QUIC。" 's/^  # \(- AND,((NETWORK,UDP),(DST-PORT,443).*# LITEBOX_QUIC\)/  \1/' ;;
+		off) edit_config "已放行 QUIC（节点 UDP 好的可以这样用）。" 's/^  \(- AND,((NETWORK,UDP),(DST-PORT,443).*# LITEBOX_QUIC\)/  # \1/' ;;
+		"")
+			grep -q '^  - AND,((NETWORK,UDP),(DST-PORT,443).*# LITEBOX_QUIC' "$CONFIG" && echo "QUIC：已屏蔽（走代理时）" && return 0
+			grep -q '# LITEBOX_QUIC' "$CONFIG" && echo "QUIC：已放行" && return 0
+			echo "当前配置里没有 QUIC 开关（旧版配置）。重新生成：litebox update --reset-config" ;;
+		*) die "用法：litebox quic on|off" ;;
+	esac
+}
+
+cmd_stack() {
+	case "${1:-}" in
+		system|gvisor|mixed)
+			grep -q '# LITEBOX_STACK' "$CONFIG" || die "当前配置里没有协议栈开关（旧版配置）。重新生成：litebox update --reset-config"
+			edit_config "TUN 协议栈已改为 $1。" "s/^\(  stack: \)[a-z]*\( # LITEBOX_STACK\)/\1$1\2/" ;;
+		"") echo "TUN 协议栈：$(sed -n 's/^  stack: \([a-z]*\).*/\1/p' "$CONFIG")" ;;
+		*) die "用法：litebox stack system|gvisor|mixed" ;;
+	esac
+}
+
+# 下载最新的 get.sh 并运行（参数原样传给 install.sh，比如 --mirror、--reset-config）
+cmd_update() {
+	local url=https://raw.githubusercontent.com/lyr05142002-dot/Q7Y/main/get.sh prev="" a
+	for a in "$@"; do
+		[ "$prev" = --mirror ] && url="${a%/}/$url"
+		prev=$a
+	done
+	if command -v curl >/dev/null 2>&1; then
+		curl -fsSL --connect-timeout 10 "$url" -o /tmp/litebox-get.sh
+	else
+		wget -q -T 30 -O /tmp/litebox-get.sh "$url"
+	fi || die "下载升级脚本失败。连不上 GitHub 时试：litebox update --mirror https://ghfast.top"
+	sh /tmp/litebox-get.sh "$@"
+	local rc=$?
+	rm -f /tmp/litebox-get.sh
+	return $rc
 }
 
 cmd_uninstall() {
@@ -377,6 +461,9 @@ case "${1:-}" in
 	panel) show_panel ;;
 	direct) "$INIT" stop; "$INIT" disable; dns_off; echo "已恢复直连，开机不再自启（恢复：litebox start && /etc/init.d/litebox enable）。" ;;
 	watchdog) cmd_watchdog ;;
+	update) shift; cmd_update "$@" ;;
+	quic) cmd_quic "${2:-}" ;;
+	stack) cmd_stack "${2:-}" ;;
 	dns-on) dns_on ;;
 	dns-off) dns_off ;;
 	uninstall) cmd_uninstall "${2:-}" ;;

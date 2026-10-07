@@ -44,6 +44,7 @@ usage() {
   --sub URL       机场订阅地址（Clash/mihomo 订阅或 base64 节点链接）
   --port N        面板端口（默认 9090）
   --mirror URL    GitHub 下载镜像前缀，例如 https://ghfast.top（默认先直连，失败再试内置镜像）
+  --reset-config  用新版模板重新生成配置（订阅、端口、密钥保留，旧配置备份为 config.yaml.old）
   -h, --help      显示本帮助
 EOF
 }
@@ -51,6 +52,7 @@ EOF
 SUB_URL=""
 PANEL_PORT=""
 USER_MIRROR=""
+RESET_CONFIG=0
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--sub|--port|--mirror)
@@ -61,6 +63,7 @@ while [ $# -gt 0 ]; do
 				--mirror) USER_MIRROR=${2%/} ;;
 			esac
 			shift 2 ;;
+		--reset-config) RESET_CONFIG=1; shift ;;
 		-h|--help) usage; exit 0 ;;
 		*) usage; die "未知参数：$1" ;;
 	esac
@@ -147,16 +150,22 @@ fetch_verified() { # URL 输出文件 SHA256
 	return 1
 }
 
-# 规则文件不锁版本（作者会更新），只检查不是空文件或网页错误页
+# 规则文件不锁版本（作者会更新），只检查不是空文件或网页错误页。
+# 记住上一次成功的下载源（直连或某个镜像）下次先试；连续两个文件全部失败多半是网络不通，
+# 剩下的不再逐个等超时，交给内核启动后经代理下载
+RULE_SRC="" RULE_FAILS=0
 fetch_rule() { # URL 输出文件
 	local src
-	for src in $(sources_of "$1"); do
+	[ "$RULE_FAILS" -ge 2 ] && return 1
+	for src in ${RULE_SRC:+"$RULE_SRC$1"} $(sources_of "$1"); do
 		if fetch "$src" "$2.tmp" 2>/dev/null && [ -s "$2.tmp" ] && [ "$(head -c 1 "$2.tmp")" != "<" ]; then
 			mv -f "$2.tmp" "$2"
+			RULE_SRC=${src%"$1"} RULE_FAILS=0
 			return 0
 		fi
 		rm -f "$2.tmp"
 	done
+	RULE_FAILS=$((RULE_FAILS + 1))
 	return 1
 }
 
@@ -210,8 +219,13 @@ for pair in \
 do
 	file=${pair%%=*}
 	url=${pair#*=}
+	if [ "$RULE_FAILS" -ge 2 ]; then
+		[ -f "$HOME_DIR/rules/$file" ] || skipped="$skipped $file"
+		continue
+	fi
 	fetch_rule "$url" "$HOME_DIR/rules/$file" || warn "  $file 下载失败，内核启动后会经代理重试。"
 done
+[ -n "${skipped:-}" ] && warn "  连不上规则下载地址，其余规则（$skipped ）由内核启动后经代理下载。"
 
 # ---------- 设置与配置文件 ----------
 
@@ -252,6 +266,16 @@ EOF
 
 sed_escape() { printf '%s' "$1" | sed -e "s/'/''/g" -e 's/[\\|&]/\\&/g'; }
 
+if [ -f "$CONFIG" ] && [ "$RESET_CONFIG" = 1 ]; then
+	# 沿用旧配置里的订阅地址（命令行 --sub 优先）
+	if [ -z "$SUB_URL" ]; then
+		SUB_URL=$(sed -n "s/^    url: '\(.*\)' # LITEBOX_SUB\$/\1/p" "$CONFIG" | sed "s/''/'/g")
+		[ "$SUB_URL" = "$SUB_PLACEHOLDER" ] && SUB_URL=""
+	fi
+	cp "$CONFIG" "$CONFIG.old"
+	rm -f "$CONFIG"
+	info "按新模板重新生成配置，旧配置备份为 $CONFIG.old"
+fi
 if [ -f "$CONFIG" ]; then
 	info "保留已有配置 $CONFIG"
 	sed -i "s|^external-controller: .*|external-controller: 0.0.0.0:$PANEL_PORT|" "$CONFIG"

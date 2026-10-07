@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LiteBox 手机版</title>
+<meta name="description" content="生成和路由器同一套分流规则的手机配置：安卓 FlClash / Clash Meta，iPhone Shadowrocket">
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2129; --muted: #5c6370; --line: #e3e6eb;
+    --accent: #2563eb; --accent-text: #ffffff; --ok: #15803d; --err: #b91c1c; --code: #eef1f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #111316; --card: #1b1e23; --text: #e6e8eb; --muted: #9aa1ab; --line: #2c3037;
+      --accent: #5b8cff; --accent-text: #0b0d10; --ok: #4ade80; --err: #f87171; --code: #23272e;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #111316; --card: #1b1e23; --text: #e6e8eb; --muted: #9aa1ab; --line: #2c3037;
+    --accent: #5b8cff; --accent-text: #0b0d10; --ok: #4ade80; --err: #f87171; --code: #23272e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  }
+  main { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 20px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .tab {
+    flex: 1; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card);
+    color: var(--text); font: inherit; cursor: pointer;
+  }
+  .tab[aria-selected="true"] { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  section.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+  section.card[hidden] { display: none; }
+  h2 { font-size: 18px; margin: 0 0 12px; }
+  ol { padding-left: 20px; margin: 0; }
+  li { margin: 0 0 14px; }
+  label { display: block; font-weight: 600; margin-bottom: 6px; }
+  input[type="url"] {
+    width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--bg); color: var(--text); font: inherit;
+  }
+  .btn {
+    display: inline-block; margin: 10px 8px 0 0; padding: 11px 16px; border: 0; border-radius: 10px;
+    background: var(--accent); color: var(--accent-text); font: inherit; font-weight: 600; text-decoration: none; cursor: pointer;
+  }
+  .btn.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  .msg { min-height: 1.6em; margin-top: 8px; font-size: 14px; }
+  .msg.ok { color: var(--ok); } .msg.err { color: var(--err); }
+  .note { color: var(--muted); font-size: 14px; }
+  code { background: var(--code); padding: 1px 5px; border-radius: 5px; font-size: 13px; white-space: nowrap; }
+  a { color: var(--accent); }
+  footer { margin-top: 24px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>LiteBox 手机版</h1>
+  <p class="lead">和家里路由器同一套分组和分流规则，出门在外也一样：国内直连、AI 单独选节点、其余走代理。</p>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-android" aria-controls="android" aria-selected="true">安卓</button>
+    <button class="tab" role="tab" id="tab-ios" aria-controls="ios" aria-selected="false">iPhone</button>
+  </div>
+
+  <section class="card" id="android" role="tabpanel" aria-labelledby="tab-android">
+    <h2>安卓：FlClash / Clash Meta for Android</h2>
+    <ol>
+      <li>安装 App（二选一）：
+        <a href="https://github.com/chen08209/FlClash/releases/latest">FlClash</a> 或
+        <a href="https://github.com/MetaCubeX/ClashMetaForAndroid/releases/latest">Clash Meta for Android</a>，下载 <code>arm64-v8a</code> 版本的 apk。</li>
+      <li>
+        <label for="sub">机场订阅地址</label>
+        <input type="url" id="sub" placeholder="https://..." autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button class="btn" id="gen">生成并下载配置</button>
+        <button class="btn secondary" id="copy-yaml">复制配置内容</button>
+        <div class="msg" id="msg" role="status"></div>
+        <p class="note">订阅地址只在这台手机的浏览器里处理，不会上传到任何地方。</p>
+      </li>
+      <li>在 App 里导入下载的 <code>litebox-android.yaml</code>：
+        FlClash 是「配置 → 右下角 + → 文件」；Clash Meta 是「配置 → 新配置 → 导入文件」。选中它，回首页打开开关。</li>
+      <li>第一次启动会经代理下载分流规则，等十几秒再用。在 App 的「代理」页可以给「🤖 AI」单独选节点。</li>
+    </ol>
+  </section>
+
+  <section class="card" id="ios" role="tabpanel" aria-labelledby="tab-ios" hidden>
+    <h2>iPhone：Shadowrocket</h2>
+    <ol>
+      <li>在 App Store（非中国大陆区账号）安装 Shadowrocket。</li>
+      <li>Shadowrocket 首页右上角 <code>+</code>，类型选 <code>Subscribe</code>，填机场订阅地址并保存。</li>
+      <li>导入 LiteBox 规则配置：
+        <br><a class="btn" id="sr-import" href="#">一键导入 Shadowrocket</a>
+        <button class="btn secondary" id="copy-sr">复制配置地址</button>
+        <div class="msg" id="msg-ios" role="status"></div>
+        <p class="note">一键导入没反应时：复制地址，在 Shadowrocket「配置 → 右上角 +」粘贴下载。</p></li>
+      <li>在「配置」页点刚下载的 <code>shadowrocket.conf</code> →「使用配置」，回首页「全局路由」选「配置」，打开开关。</li>
+    </ol>
+  </section>
+
+  <footer>
+    分流规则来自 <a href="https://github.com/liandu2024/clash">liandu2024/clash</a> 和
+    <a href="https://github.com/MetaCubeX/meta-rules-dat">MetaCubeX/meta-rules-dat</a>，每天自动更新。
+    路由器版和源码：<a href="https://github.com/lyr05142002-dot/Q7Y">lyr05142002-dot/Q7Y</a>
+  </footer>
+</main>
+<script>
+(function () {
+  var SR_CONF = "https://raw.githubusercontent.com/lyr05142002-dot/Q7Y/main/docs/mobile/shadowrocket.conf";
+  var tabs = document.querySelectorAll(".tab");
+  function show(id) {
+    tabs.forEach(function (t) {
+      var on = t.getAttribute("aria-controls") === id;
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+    });
+  }
+  tabs.forEach(function (t) { t.addEventListener("click", function () { show(t.getAttribute("aria-controls")); }); });
+  if (/iPhone|iPad|iPod/.test(navigator.userAgent)) show("ios");
+
+  var msg = document.getElementById("msg");
+  function say(el, text, ok) { el.textContent = text; el.className = "msg " + (ok ? "ok" : "err"); }
+
+  function copy(text, el, done) {
+    function fallback() {
+      var ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); say(el, done, true); } catch (e) { say(el, "复制失败，请手动复制。", false); }
+      document.body.removeChild(ta);
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(function () { say(el, done, true); }, fallback);
+    } else { fallback(); }
+  }
+
+  function build() {
+    var sub = document.getElementById("sub").value.trim();
+    if (!/^https?:\/\/\S+$/i.test(sub)) {
+      say(msg, "请填完整的订阅地址（以 http:// 或 https:// 开头）。", false);
+      return Promise.reject();
+    }
+    return fetch("mobile/android.yaml", { cache: "no-cache" }).then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      return r.text();
+    }).then(function (tpl) {
+      // YAML 单引号字符串里的单引号写成两个
+      return tpl.split("__SUB_URL__").join(sub.replace(/'/g, "''"));
+    }).catch(function (e) {
+      if (e) say(msg, "读取配置模板失败，请检查网络后重试。", false);
+      throw e;
+    });
+  }
+
+  document.getElementById("gen").addEventListener("click", function () {
+    build().then(function (yaml) {
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([yaml], { type: "application/x-yaml" }));
+      a.download = "litebox-android.yaml";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 10000);
+      say(msg, "已生成 litebox-android.yaml，去 App 里导入。", true);
+    }, function () {});
+  });
+  document.getElementById("copy-yaml").addEventListener("click", function () {
+    build().then(function (yaml) {
+      copy(yaml, msg, "已复制。也可以在 App 里新建配置后粘贴。");
+    }, function () {});
+  });
+
+  document.getElementById("sr-import").href = "shadowrocket://config/add/" + SR_CONF;
+  document.getElementById("copy-sr").addEventListener("click", function () {
+    copy(SR_CONF, document.getElementById("msg-ios"), "已复制配置地址。");
+  });
+})();
+</script>
+</body>
+</html>

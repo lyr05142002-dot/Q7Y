@@ -13,12 +13,14 @@
 
 或者在路由器上用**一条命令**安装（需要路由器能访问 GitHub，见[方式二](#方式二路由器上一条命令安装)）。
 
+**手机版**（安卓 / iPhone，和路由器同一套分流规则，出门在外也能用）：见[手机版](#手机版)。
+
 ## 为什么不直接装 Open-Box
 
 | | GL-MT3600BE 实际情况 | Open-Box 要求 |
 |---|---|---|
 | CPU | MT7987A，4×Cortex-A53（`ARMv8 Processor rev 4`，aarch64） | aarch64 ✅ |
-| 系统 | GL 官方固件 = OpenWrt 21.02，fw3 / iptables | OpenWrt 24+，nftables ❌ |
+| 系统 | GL 官方固件 = OpenWrt 21.02，fw3 / iptables，musl 1.1.x | OpenWrt 24+、musl ≥ 1.2.4（安装脚本直接拒绝更老的系统），nftables ❌ |
 | 内存 | 512MB | 安装脚本要求 ≥ 约 440MB 且常驻 Node.js 面板 |
 
 Open-Box 的面板是闭源的 Node.js 程序，无法修改，所以这里换成全部开源的组件，从头写了安装和管理脚本（**没有复制 Open-Box 的代码**）：
@@ -29,6 +31,18 @@ Open-Box 的面板是闭源的 Node.js 程序，无法修改，所以这里换�
 | [zashboard](https://github.com/Zephyruso/zashboard) v3.29.1 | 网页面板（无字体版，约 2.7MB） | 官方 Release，同样校验 SHA256 |
 | 分流规则 | AI / 直连 / 代理域名集 + 国内域名和 IP 段 | [liandu2024/clash](https://github.com/liandu2024/clash/tree/main/list)、[MetaCubeX/meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) |
 
+### 从 Open-Box 借鉴的设计
+
+Open-Box 的面板和 App 闭源，但它的一些做法很实用，LiteBox 用自己的方式实现了这几条：
+
+| Open-Box 的做法 | LiteBox 里 |
+|---|---|
+| 默认屏蔽走代理的 QUIC，浏览器退回 TCP，节点 UDP 差时更流畅 | 默认屏蔽，`litebox quic on/off` 切换；国内站点不受影响 |
+| 「IP 只管 IP，域名只管域名」，不为匹配 IP 段去解析境外域名 | 国内 IP 规则加 `no-resolve` |
+| 开着硬件流量卸载的联发科机器（如 MT6000）出问题时换 gvisor 协议栈 | `litebox stack gvisor`；`litebox doctor` 发现开着流量卸载会提示 |
+| 安卓 App 的「本地分流」：手机按路由器同一套规则自己分流 | [手机版](#手机版)：安卓（FlClash / Clash Meta）和 iPhone（Shadowrocket）配置，不用装专门的 App |
+| 一键升级、回退 | `litebox update`（配置和订阅保留，下载包校验 SHA256） |
+
 ## 内存
 
 面板只是静态网页，由内核直接提供，**不另起进程**；常驻的只有 mihomo 一个进程。
@@ -36,7 +50,7 @@ Open-Box 的面板是闭源的 Node.js 程序，无法修改，所以这里换�
 - 省内存的设置：不加载 GeoSite/GeoIP 数据库（国内规则改用体积小得多的 mrs 格式）、关闭进程查找、TUN 用 system 协议栈、MTU 1500
 - `GOMEMLIMIT=100MiB`：接近 100MB 时 Go 运行时会更积极地回收内存
 - 看门狗：cron 每 5 分钟检查一次，常驻内存超过 **180MB** 自动重启内核
-- 实测参考：在电脑上用同一份配置启动 mihomo v1.19.31（加载全部 10 个规则集，其中国内域名 11 万条、国内 IP 段 9600 条，还没有节点），常驻内存约 **41MB**。加上节点和日常连接，预计在 40–100MB 之间。**还没在 GL-MT3600BE 真机上测过**，装好后用 `litebox mem` 看实际数字
+- 实测参考：在 OpenWrt 21.02.7 上装好运行（10 个规则集，其中国内域名 11 万条、国内 IP 段 9600 条），常驻内存约 **50MB**；局域网设备 40 个并发、200 次下载（约 100MB 流量）后仍是 50MB 左右。测试用的是 x86_64，**还没在 GL-MT3600BE 真机上测过**，装好后用 `litebox mem` 看实际数字
 
 两个上限都在 `/etc/litebox/litebox.conf` 里改（`MEM_SOFT_MB`、`MEM_HARD_MB`），改完 `litebox restart`。
 
@@ -136,6 +150,37 @@ curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/lyr05142002-dot/
 
 它会下载最新版的 `litebox.tar.gz`，校验 SHA256（校验值优先直接从 GitHub 取），然后运行同一个 `install.sh`，参数原样传过去。装好后从第 4 步继续。
 
+## 手机版
+
+和路由器**同一套分组和分流规则**（国内直连、AI 单独选节点、屏蔽走代理的 QUIC），在外面用流量也一样分流。手机自己连机场节点，不经过家里的路由器。
+
+**最简单：手机浏览器打开 <https://lyr05142002-dot.github.io/Q7Y/>**，按页面提示操作。安卓填订阅地址就能生成配置文件，订阅地址只在手机浏览器里处理、不会上传；iPhone 一键导入 Shadowrocket。
+
+<p>
+  <img src="docs/img/08-mobile-android.png" alt="安卓：填订阅地址生成配置" width="45%">
+  <img src="docs/img/09-mobile-iphone.png" alt="iPhone：一键导入 Shadowrocket" width="45%">
+</p>
+
+**安卓**（[FlClash](https://github.com/chen08209/FlClash/releases/latest) 或 [Clash Meta for Android](https://github.com/MetaCubeX/ClashMetaForAndroid/releases/latest)，下载 `arm64-v8a` 版本）：
+
+1. 在上面的页面填订阅地址，点「生成并下载配置」，得到 `litebox-android.yaml`
+   （也可以下载 [android.yaml](docs/mobile/android.yaml)，把里面的 `__SUB_URL__` 换成订阅地址）
+2. App 里导入这个文件：FlClash「配置 → + → 文件」，Clash Meta「配置 → 新配置 → 导入文件」
+3. 选中它，打开开关。第一次启动会经代理下载规则，等十几秒
+
+**iPhone**（Shadowrocket）：
+
+1. Shadowrocket 首页右上角 `+`，类型选 `Subscribe`，填订阅地址
+2. 「配置」页右上角 `+`，粘贴下面的地址并下载，然后点它「使用配置」：
+   ```
+   https://raw.githubusercontent.com/lyr05142002-dot/Q7Y/main/docs/mobile/shadowrocket.conf
+   ```
+3. 首页「全局路由」选「配置」，打开开关
+
+在家连着装了 LiteBox 的 Wi-Fi 时，手机上的代理可以关掉，路由器已经在分流了。
+
+> 手机配置还没在真机上测过：安卓配置用 mihomo 内核检查通过（FlClash / Clash Meta 用的就是 mihomo）；Shadowrocket 配置是按它的格式写的，有问题请反馈。
+
 ## 分组和分流
 
 | 分组 | 用途 |
@@ -145,7 +190,9 @@ curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/lyr05142002-dot/
 | 🤖 AI | ChatGPT / Claude / Gemini / Copilot / Grok 等单独选节点（AI 服务通常要固定地区） |
 | 🐟 漏网之鱼 | 没命中任何规则的流量，默认走代理，可改直连 |
 
-规则从上往下匹配：局域网直连 → 作者的直连名单 → AI 名单 → 作者的代理名单 → 国内域名直连 → 国内 IP 直连 → 其余走「漏网之鱼」。
+规则从上往下匹配：局域网直连 → 作者的直连名单 → 屏蔽走代理的 QUIC → AI 名单 → 作者的代理名单 → 国内域名直连 → 国内 IP 直连 → 其余走「漏网之鱼」。
+
+国内 IP 规则带 `no-resolve`：有域名的连接只按域名判断，不在国内域名名单里的域名默认走代理（想直连就把「🐟 漏网之鱼」切成直连）。
 
 规则文件每天自动更新一次。作者的名单里有少量他自己的域名和 IP，一般不影响使用。想调整规则的话，编辑 `/etc/litebox/config.yaml` 里的 `rules:`，然后执行 `litebox check && litebox restart`。
 
@@ -161,9 +208,16 @@ curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/lyr05142002-dot/
 | `litebox restart` / `stop` / `start` | 重启 / 停止 / 启动 |
 | `litebox log` | 最近的内核日志 |
 | `litebox direct` | **上不了网时用**：立即恢复直连并关闭开机自启 |
+| `litebox update` | 升级到最新版，配置和订阅保留（连不上 GitHub 时加 `--mirror https://ghfast.top`） |
+| `litebox quic on` / `off` | 屏蔽 / 放行走代理的 QUIC（默认屏蔽） |
+| `litebox stack gvisor` | 切换 TUN 协议栈（`system` 默认 / `gvisor` / `mixed`），开着硬件加速出问题时用 |
 | `litebox uninstall` | 卸载（`--purge` 连配置和订阅一起删） |
 
-升级：下载新版安装包，按第 2、3 步重新执行 `install.sh`（或再跑一次方式二的命令），配置、订阅、面板密钥都会保留。
+升级：执行 `litebox update`；或下载新版安装包，按第 2、3 步重新执行 `install.sh`。配置、订阅、面板密钥都会保留。
+
+升级时不会改动已有的 `config.yaml`。想用上新版模板里的改进（比如 QUIC 开关），执行 `litebox update --reset-config`：按新模板重新生成配置，订阅、端口、密钥保留，旧配置备份为 `config.yaml.old`。
+
+**自动保护**：看门狗每 5 分钟检查一次。内核反复崩溃、系统放弃重启它时，看门狗会先试着拉起；拉不起来就恢复原来的 DNS，让家里设备直连上网，不会全家断网。内核恢复后自动重新接管。
 
 ## 工作原理
 

@@ -1,6 +1,58 @@
-# Q7Y · LiteBox
+<div align="center">
 
-给 **GL.iNet GL-MT3600BE（Beryl 7）** 这类小内存 OpenWrt 路由器用的轻量透明代理，思路来自 [Open-Box](https://github.com/liandu2024/Open-Box) 和[这期视频](https://youtu.be/G_7AmjfSRQ8)：装好后在浏览器里切换节点、看连接和流量，分流规则直接用视频作者的[域名集](https://github.com/liandu2024/clash/tree/main/list)。
+# LiteBox
+
+**给 GL.iNet GL-MT3600BE（Beryl 7）等小内存 OpenWrt 路由器用的轻量透明代理，附手机版**
+
+家里所有设备不用任何设置就能分流：国内直连、AI 单独选节点、其余走代理。常驻内存约 50MB。
+
+[![最新版本](https://img.shields.io/github/v/release/lyr05142002-dot/Q7Y?label=%E6%9C%80%E6%96%B0%E7%89%88)](https://github.com/lyr05142002-dot/Q7Y/releases/latest)
+[![OpenWrt 21.02 安装测试](https://github.com/lyr05142002-dot/Q7Y/actions/workflows/test.yml/badge.svg)](https://github.com/lyr05142002-dot/Q7Y/actions/workflows/test.yml)
+
+[下载](#下载) · [图文安装教程](#图文安装教程) · [手机版](#手机版) · [常用命令](#常用命令) · [出问题怎么办](#第-5-步检查是否正常工作)
+
+</div>
+
+![网页面板：代理分组](docs/img/10-panel-proxies.png)
+
+<p align="center"><sub>路由器网页面板（zashboard）。截图来自云端测试环境，节点是演示数据</sub></p>
+
+## 特点
+
+- **GL 官方固件直接装**：GL 固件是 OpenWrt 21.02，[Open-Box](https://github.com/liandu2024/Open-Box) 要求 OpenWrt 24 以上装不了；LiteBox 专门按 21.02 写，不用刷机
+- **省内存**：只有一个 mihomo 进程，常驻约 50MB，大流量下也不涨；超过上限自动重启
+- **分流规则现成的**：用[视频作者](https://youtu.be/G_7AmjfSRQ8)的[域名集](https://github.com/liandu2024/clash/tree/main/list)，每天自动更新；ChatGPT / Claude / Gemini / Grok 等走单独的 🤖 AI 分组
+- **手机版**：安卓、iPhone 用同一套规则，出门在外也一样分流
+- **出问题能自救**：`litebox doctor` 一键自检、`litebox direct` 一键恢复直连；内核起不来时看门狗自动恢复 DNS，不会全家断网
+- **下载安全**：内核和面板锁定版本、校验 SHA256；每次发布前自动在 OpenWrt 21.02 里完整装一遍测试
+
+<table>
+  <tr>
+    <td width="68%"><img src="docs/img/11-panel-connections.png" alt="连接页：每条连接走的规则和线路"></td>
+    <td><img src="docs/img/12-panel-phone.png" alt="手机打开面板"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>每条连接命中的规则和完整线路</sub></td>
+    <td align="center"><sub>手机上打开面板</sub></td>
+  </tr>
+</table>
+
+## 云端实测
+
+在 OpenWrt 21.02.7（和 GL 固件同一版本）里按用户流程从头安装，局域网接一台模拟手机测试：
+
+| 项目 | 结果 |
+|---|---|
+| 安装 | 连不上 GitHub 时约 65 秒（规则改由内核经代理下载）；装完 **2.5 秒**内局域网设备就能上网 |
+| 内存 | 常驻约 **53MB**；40 并发、约 100MB 下载后仍是 50MB 左右 |
+| DNS | 中位 **0.2ms**（fake-ip 在本地应答） |
+| 打开网页 | 首字节 0.12 秒，直连同一节点是 0.14 秒，**没有额外延迟** |
+| 下载速度 | 43–47 MB/s，约为直连同一节点的 **90%** |
+| 分流 | ChatGPT / Claude / Gemini / Grok → 🤖 AI；百度 / B 站 / 淘宝 / QQ → 直连；Google / YouTube / GitHub → 代理 ✅ |
+| 手机版 | 安卓配置启动后 2 秒下载好全部规则，分流结果同上，内存 48MB |
+| 稳定性 | 崩溃自动拉起、看门狗自愈、升级保留配置、重启自启、卸载还原，全部通过 |
+
+测试机是 x86_64，**还没在 GL-MT3600BE 真机上测过**。真机的 4 核 A53 单核比测试机慢不少：处理 100MB 流量测试机约用 1 秒 CPU，按此粗估，跑满百兆宽带约占 4 个核里的 1 个，日常上网、看视频负载很轻。装好后用 `litebox mem`、`top` 看实际情况。
 
 ## 下载
 
@@ -11,9 +63,7 @@
 | [**litebox-arm64-offline.zip**](https://github.com/lyr05142002-dot/Q7Y/releases/latest/download/litebox-arm64-offline.zip) | **推荐**。已带 mihomo 内核和面板（约 23MB），路由器连不上 GitHub 也能装。适用于 GL-MT3600BE 等 aarch64 路由器 |
 | [litebox.zip](https://github.com/lyr05142002-dot/Q7Y/releases/latest/download/litebox.zip) | 只有脚本（几十 KB），安装时再联网下载内核和面板，支持 aarch64 / armv7 / x86_64 |
 
-或者在路由器上用**一条命令**安装（需要路由器能访问 GitHub，见[方式二](#方式二路由器上一条命令安装)）。
-
-**手机版**（安卓 / iPhone，和路由器同一套分流规则，出门在外也能用）：见[手机版](#手机版)。
+也可以在路由器上用[一条命令安装](#方式二路由器上一条命令安装)（需要路由器能访问 GitHub）。手机见[手机版](#手机版)。
 
 ## 为什么不直接装 Open-Box
 
@@ -21,36 +71,31 @@
 |---|---|---|
 | CPU | MT7987A，4×Cortex-A53（`ARMv8 Processor rev 4`，aarch64） | aarch64 ✅ |
 | 系统 | GL 官方固件 = OpenWrt 21.02，fw3 / iptables，musl 1.1.x | OpenWrt 24+、musl ≥ 1.2.4（安装脚本直接拒绝更老的系统），nftables ❌ |
-| 内存 | 512MB | 安装脚本要求 ≥ 约 440MB 且常驻 Node.js 面板 |
+| 内存 | 512MB | 要求 512MB 内存、512MB 存储，常驻 Node.js 面板 |
 
-Open-Box 的面板是闭源的 Node.js 程序，无法修改，所以这里换成全部开源的组件，从头写了安装和管理脚本（**没有复制 Open-Box 的代码**）：
+Open-Box 的面板和 App 是闭源的，没法改，所以 LiteBox 全部用开源组件，从头写了安装和管理脚本（**没有复制 Open-Box 的代码**）：
 
 | 组件 | 作用 | 来源 |
 |---|---|---|
 | [mihomo](https://github.com/MetaCubeX/mihomo) v1.19.31 | 代理内核：订阅、分组、分流、DNS、tun 透明代理 | 官方 Release，SHA256 写死在 `install.sh` 里校验 |
-| [zashboard](https://github.com/Zephyruso/zashboard) v3.29.1 | 网页面板（无字体版，约 2.7MB） | 官方 Release，同样校验 SHA256 |
+| [zashboard](https://github.com/Zephyruso/zashboard) v3.29.1 | 网页面板（无字体版，约 2.7MB），由内核直接提供，不另起进程 | 官方 Release，同样校验 SHA256 |
 | 分流规则 | AI / 直连 / 代理域名集 + 国内域名和 IP 段 | [liandu2024/clash](https://github.com/liandu2024/clash/tree/main/list)、[MetaCubeX/meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) |
 
-### 从 Open-Box 借鉴的设计
-
-Open-Box 的面板和 App 闭源，但它的一些做法很实用，LiteBox 用自己的方式实现了这几条：
+Open-Box 有些做法很实用，LiteBox 用自己的方式实现了：
 
 | Open-Box 的做法 | LiteBox 里 |
 |---|---|
 | 默认屏蔽走代理的 QUIC，浏览器退回 TCP，节点 UDP 差时更流畅 | 默认屏蔽，`litebox quic on/off` 切换；国内站点不受影响 |
 | 「IP 只管 IP，域名只管域名」，不为匹配 IP 段去解析境外域名 | 国内 IP 规则加 `no-resolve` |
-| 开着硬件流量卸载的联发科机器（如 MT6000）出问题时换 gvisor 协议栈 | `litebox stack gvisor`；`litebox doctor` 发现开着流量卸载会提示 |
+| 开着硬件流量卸载的联发科机器出问题时换 gvisor 协议栈 | `litebox stack gvisor`；`litebox doctor` 发现开着流量卸载会提示 |
 | 安卓 App 的「本地分流」：手机按路由器同一套规则自己分流 | [手机版](#手机版)：安卓（FlClash / Clash Meta）和 iPhone（Shadowrocket）配置，不用装专门的 App |
-| 一键升级、回退 | `litebox update`（配置和订阅保留，下载包校验 SHA256） |
+| 一键升级 | `litebox update`（配置和订阅保留，下载包校验 SHA256） |
 
-## 内存
+### 内存控制
 
-面板只是静态网页，由内核直接提供，**不另起进程**；常驻的只有 mihomo 一个进程。
-
-- 省内存的设置：不加载 GeoSite/GeoIP 数据库（国内规则改用体积小得多的 mrs 格式）、关闭进程查找、TUN 用 system 协议栈、MTU 1500
-- `GOMEMLIMIT=100MiB`：接近 100MB 时 Go 运行时会更积极地回收内存
+- 不加载 GeoSite / GeoIP 数据库（国内规则改用体积小得多的 mrs 格式）、关闭进程查找
+- `GOMEMLIMIT=100MiB`：接近 100MB 时 Go 运行时更积极地回收内存
 - 看门狗：cron 每 5 分钟检查一次，常驻内存超过 **180MB** 自动重启内核
-- 实测参考：在 OpenWrt 21.02.7 上装好运行（10 个规则集，其中国内域名 11 万条、国内 IP 段 9600 条），常驻内存约 **50MB**；局域网设备 40 个并发、200 次下载（约 100MB 流量）后仍是 50MB 左右。测试用的是 x86_64，**还没在 GL-MT3600BE 真机上测过**，装好后用 `litebox mem` 看实际数字
 
 两个上限都在 `/etc/litebox/litebox.conf` 里改（`MEM_SOFT_MB`、`MEM_HARD_MB`），改完 `litebox restart`。
 
@@ -179,7 +224,7 @@ curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/lyr05142002-dot/
 
 在家连着装了 LiteBox 的 Wi-Fi 时，手机上的代理可以关掉，路由器已经在分流了。
 
-> 手机配置还没在真机上测过：安卓配置用 mihomo 内核检查通过（FlClash / Clash Meta 用的就是 mihomo）；Shadowrocket 配置是按它的格式写的，有问题请反馈。
+> 安卓配置在云端用 mihomo 内核实际跑过（FlClash / Clash Meta 用的就是 mihomo）：规则 2 秒下载完，分流正确。还没在真手机上测过；Shadowrocket 配置是按它的格式写的，没法在云端运行，有问题请反馈。
 
 ## 分组和分流
 
@@ -231,7 +276,7 @@ curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/lyr05142002-dot/
 - IPv6 流量不经过代理。GL 固件默认关闭 IPv6，建议保持关闭
 - 访客网络（guest）默认不走代理
 - 设备自己设置的 DoH（比如浏览器的「安全 DNS」）会绕过路由器 DNS，按 IP 分流时可能不准，建议关掉
-- 只在 GL 固件的 OpenWrt 21.02 环境下设计，**尚未在真机上验证**。第一次安装时建议留一根网线，出问题就执行 `litebox direct`
+- 按 GL 固件的 OpenWrt 21.02 设计，在云端的 OpenWrt 21.02.7 上完整测试过，**还没在 GL-MT3600BE 真机上验证**。第一次安装时建议留一根网线，出问题就执行 `litebox direct`
 
 ## 许可证
 

@@ -205,6 +205,7 @@ fi
 # ---------- 规则文件 ----------
 
 info "下载分流规则 ..."
+skipped=""
 for pair in \
 	lb_direct.list=$LB_LIST/Direct.list \
 	lb_ai.list=$LB_LIST/AI.list \
@@ -225,7 +226,7 @@ do
 	fi
 	fetch_rule "$url" "$HOME_DIR/rules/$file" || warn "  $file 下载失败，内核启动后会经代理重试。"
 done
-[ -n "${skipped:-}" ] && warn "  连不上规则下载地址，其余规则（$skipped ）由内核启动后经代理下载。"
+[ -n "$skipped" ] && warn "  连不上规则下载地址，其余规则（$skipped ）由内核启动后经代理下载。"
 
 # ---------- 设置与配置文件 ----------
 

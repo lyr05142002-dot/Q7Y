@@ -128,7 +128,7 @@ check() { # 说明 命令…
 }
 
 run_round() { # 名字 docker网络参数
-	local name=$1 net=$2 c out
+	local name=$1 net=$2 c out left
 	CUR_ROUND=$name
 	c=lb-$name
 	echo
@@ -188,7 +188,13 @@ run_round() { # 名字 docker网络参数
 		echo "  - 跳过「真实名单里没有作者个人条目」：这台机器的容器连不上 GitHub（GitHub Actions 上会严格检查）"
 	elif [ "$name" = online ]; then
 		# 能上网的这一轮下载的是作者真实的名单：默认规则里要搜不到他的个人条目
-		check "全新安装的默认规则里没有作者个人条目（真实名单）" x '[ -s /etc/litebox/rules/lb_direct.list ] && [ -s /etc/litebox/rules/lb_proxy.list ] && ! grep -qi "angeworld\|jlip.cc\|wan.family\|ssrdog\|216.40.86\|219.146.1.66\|142.171.133" /etc/litebox/rules/lb_direct.list /etc/litebox/rules/lb_proxy.list'
+		if x '[ -s /etc/litebox/rules/lb_direct.list ] && [ -s /etc/litebox/rules/lb_proxy.list ]'; then
+			ok "真实名单下载到了"
+			left=$(x 'grep -iE "angeworld|jlip\.cc|wan\.family|ssrdog|216\.40\.86|219\.146\.1\.66|142\.171\.133" /etc/litebox/rules/lb_direct.list /etc/litebox/rules/lb_proxy.list | head -n 5' | tr '\n' ' ')
+			if [ -z "$left" ]; then ok "全新安装的默认规则里没有作者个人条目（真实名单）"; else bad "默认规则里还有作者个人条目：$left"; fi
+		else
+			bad "真实名单没下载到。安装时：$(echo "$out" | grep '规则' | tr '\n' ' ')；日志：$(x 'cat /etc/litebox/rules-update.log' | tr '\n' ' ')；直接下载：$(x 'curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 10 https://raw.githubusercontent.com/liandu2024/clash/main/list/Direct.list 2>&1; echo; wget -q -T 10 -O /dev/null https://raw.githubusercontent.com/liandu2024/clash/main/list/Direct.list 2>&1; echo "wget=$?"; command -v curl' | tr '\n' ' ')"
+		fi
 	fi
 	# litebox update：先核对 get.sh 的 SHA256，对不上不运行
 	check "update：校验通过才运行安装脚本" x 'LB_RELEASE_URL=http://127.0.0.1:8765/rel litebox update --yes 2>&1 | grep -q "STUB_GETSH_RAN --yes"'

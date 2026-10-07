@@ -76,7 +76,9 @@ done
 
 [ "$(id -u)" = 0 ] || die "请以 root 身份运行。"
 [ -f /etc/openwrt_release ] && [ -f /etc/rc.common ] || die "只支持 OpenWrt 系统（包括 GL.iNet 官方固件）。"
-[ -f "$SCRIPT_DIR/files/config.yaml.tpl" ] || die "找不到 $SCRIPT_DIR/files/，请把整个仓库目录上传后再运行。"
+for f in config.yaml.tpl litebox litebox.init litebox-firewall.sh; do
+	[ -f "$SCRIPT_DIR/files/$f" ] || die "安装包不完整，缺少 files/$f。请重新下载安装包，把整个 litebox 文件夹上传后再运行。"
+done
 
 case "$(uname -m)" in
 	aarch64|arm64) ARCH=arm64 ;;
@@ -272,6 +274,7 @@ for pair in \
 	lb_grok.list=$LB_LIST/Grok.list \
 	lb_proxy.list=$LB_LIST/Proxy.list \
 	cn_site.mrs=$META_GEO/geosite/cn.mrs \
+	cn_ip.list=$META_GEO/geoip/cn.list \
 	cn_ip.mrs=$META_GEO/geoip/cn.mrs
 do
 	file=${pair%%=*}
@@ -320,7 +323,7 @@ port_busy() {
 
 # 升级时沿用 litebox.conf 里的端口和密钥；命令行 --port 优先
 ARG_PORT=$PANEL_PORT
-PANEL_PORT="" MIXED_PORT="" SECRET="" MEM_SOFT_MB="" MEM_HARD_MB=""
+PANEL_PORT="" MIXED_PORT="" SECRET="" MEM_SOFT_MB="" MEM_HARD_MB="" ACCEL=""
 [ -f "$CONF" ] && . "$CONF"
 OLD_PANEL_PORT=$PANEL_PORT
 PANEL_PORT=${ARG_PORT:-${OLD_PANEL_PORT:-9090}}
@@ -330,6 +333,7 @@ SECRET=${SECRET:-$(gen_secret)}
 [ -n "$SECRET" ] || SECRET=$(date +%s | sha256sum | cut -c1-24)
 MEM_SOFT_MB=${MEM_SOFT_MB:-100}
 MEM_HARD_MB=${MEM_HARD_MB:-180}
+ACCEL=${ACCEL:-1}
 
 running=0
 pidof mihomo >/dev/null 2>&1 && running=1
@@ -343,6 +347,7 @@ MIXED_PORT=$MIXED_PORT
 SECRET=$SECRET
 MEM_SOFT_MB=$MEM_SOFT_MB
 MEM_HARD_MB=$MEM_HARD_MB
+ACCEL=$ACCEL
 EOF
 
 sed_escape() { printf '%s' "$1" | sed -e "s/'/''/g" -e 's/[\\|&]/\\&/g'; }
@@ -382,7 +387,8 @@ info "检查配置 ..."
 info "安装服务和 litebox 命令 ..."
 tr -d '\r' < "$SCRIPT_DIR/files/litebox" > /usr/bin/litebox
 tr -d '\r' < "$SCRIPT_DIR/files/litebox.init" > /etc/init.d/litebox
-chmod 755 /usr/bin/litebox /etc/init.d/litebox
+tr -d '\r' < "$SCRIPT_DIR/files/litebox-firewall.sh" > "$BIN_DIR/firewall.sh"
+chmod 755 /usr/bin/litebox /etc/init.d/litebox "$BIN_DIR/firewall.sh"
 
 # 局域网流量要能转发进 tun 网卡；fw3 / fw4 都认这套 uci 配置
 uci -q delete firewall.litebox_zone
@@ -397,6 +403,12 @@ uci -q delete firewall.litebox_fwd
 uci set firewall.litebox_fwd=forwarding
 uci set firewall.litebox_fwd.src=lan
 uci set firewall.litebox_fwd.dest=litebox
+# fw3 重载防火墙时会清掉加速层的规则，用 include 让它重载后再加回来
+uci -q delete firewall.litebox_inc
+uci set firewall.litebox_inc=include
+uci set firewall.litebox_inc.type=script
+uci set firewall.litebox_inc.path="$BIN_DIR/firewall.sh"
+uci set firewall.litebox_inc.reload=1
 uci commit firewall
 /etc/init.d/firewall reload >/dev/null 2>&1
 

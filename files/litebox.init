@@ -24,8 +24,11 @@ start_service() {
 	procd_close_instance
 
 	/usr/bin/litebox dns-on
+	# 防火墙加速层要等内核开始监听，放后台做，不拖慢启动
+	[ -x /usr/lib/litebox/firewall.sh ] && (/usr/lib/litebox/firewall.sh start >/dev/null 2>&1 &)
 }
 
 stop_service() {
+	[ -x /usr/lib/litebox/firewall.sh ] && /usr/lib/litebox/firewall.sh stop
 	/usr/bin/litebox dns-off
 }

@@ -11,9 +11,11 @@ set -eu
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 IMAGE=openwrt/rootfs:x86-64-21.02.7
+# 带 ipset 和 ip-full 的 OpenWrt（ImmortalWrt），用来测完整的加速层
+IMAGE_IPSET=sulinggg/openwrt:x86_64
 WORK=$(mktemp -d)
 FAILS=0
-trap 'docker rm -f lb-offline lb-online lb-conflict >/dev/null 2>&1; rm -rf "$WORK"' EXIT
+trap 'docker rm -f lb-offline lb-online lb-conflict lb-ipset >/dev/null 2>&1; rm -rf "$WORK"' EXIT
 
 pinned() { sed -n "s/^$1=//p" "$ROOT/install.sh" | head -n 1; }
 MIHOMO_VER=$(pinned MIHOMO_VER)
@@ -23,16 +25,29 @@ MIHOMO_SHA=$(pinned MIHOMO_SHA_amd64)
 PKG=$WORK/litebox
 mkdir -p "$PKG/files"
 cp "$ROOT/install.sh" "$PKG/"
-cp "$ROOT/files/config.yaml.tpl" "$ROOT/files/litebox" "$ROOT/files/litebox.init" "$PKG/files/"
+cp "$ROOT"/files/* "$PKG/files/"
 curl -fsSL --retry 3 -o "$PKG/mihomo-linux-amd64-$MIHOMO_VER.gz" \
 	"https://github.com/MetaCubeX/mihomo/releases/download/$MIHOMO_VER/mihomo-linux-amd64-$MIHOMO_VER.gz"
 echo "$MIHOMO_SHA  $PKG/mihomo-linux-amd64-$MIHOMO_VER.gz" | sha256sum -c - >/dev/null
+
+# 国内 IP 列表（断网的容器下载不了，预先放进去）
+curl -fsSL --retry 3 -o "$WORK/cn_ip.list" "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/cn.list"
 
 # 假订阅：容器里用 uhttpd 提供，节点连不上也没关系，只测安装和接管逻辑
 mkdir -p "$WORK/sub"
 printf 'proxies:\n  - {name: test, type: socks5, server: 127.0.0.1, port: 9}\n' > "$WORK/sub/sub.yaml"
 
-docker pull -q "$IMAGE" >/dev/null
+# 本地没有才拉取；Docker Hub 偶尔限流（429），重试几次
+pull() {
+	docker image inspect "$1" >/dev/null 2>&1 && return 0
+	for i in 1 2 3 4 5; do
+		docker pull -q "$1" >/dev/null && return 0
+		sleep $((i * 20))
+	done
+	return 1
+}
+pull "$IMAGE"
+pull "$IMAGE_IPSET"
 
 ok() { echo "  ✓ $*"; }
 bad() { echo "  ✗ $*"; FAILS=$((FAILS + 1)); }
@@ -70,6 +85,10 @@ run_round() { # 名字 docker网络参数
 	check "虚拟网卡 litebox0" x 'ip link show litebox0'
 	check "防火墙 litebox 区域" x '[ "$(uci -q get firewall.litebox_zone)" = zone ]'
 	check "看门狗定时任务" x 'grep -q "litebox watchdog" /etc/crontabs/root'
+	x 'for i in $(seq 1 30); do [ -f /tmp/litebox-fw.state ] && break; sleep 1; done' || true
+	check "加速层：没有 ipset 时自动退回（只转发 fake-ip 的 TCP）" x 'grep -q "^nobypass:没有 ipset" /tmp/litebox-fw.state && grep -q "^redir:7892" /tmp/litebox-fw.state && iptables -w -t nat -S LITEBOX_NAT | grep -q "198.18.0.0/16.*REDIRECT"'
+	check "accel off 撤掉规则" x 'litebox accel off >/dev/null && [ "$(cat /tmp/litebox-fw.state)" = off ] && ! iptables -w -t nat -S | grep -q LITEBOX'
+	check "accel on 恢复规则" x 'litebox accel on >/dev/null && iptables -w -t nat -S PREROUTING | grep -q LITEBOX_NAT'
 	check "doctor 能跑完" x 'litebox doctor | grep -q 结论'
 	check "doctor 不泄露订阅 token" x '! litebox doctor | grep -q SECRET'
 	check "订阅地址原样保存（含 & 和单引号）" x '[ "$(litebox sub)" = "http://127.0.0.1:8765/sub.yaml?token=SECRET&a=it'"'"'s" ]'
@@ -152,9 +171,43 @@ uci set openclash.sub1=config_subscribe; uci set openclash.sub1.address="http://
 	docker rm -f "$c" >/dev/null
 }
 
+# 带 ipset 的系统：国内 IP 不进内核 + TCP 转发，全套加速
+run_ipset() {
+	local c=lb-ipset out
+	echo
+	echo "== 带 ipset 的路由器（完整加速层）"
+	docker rm -f "$c" >/dev/null 2>&1 || true
+	docker run -d --privileged --name "$c" --network none "$IMAGE_IPSET" /sbin/init >/dev/null
+	sleep 12
+	docker cp "$PKG" "$c:/root/litebox"
+	docker cp "$WORK/sub" "$c:/root/sub"
+	x() { docker exec "$c" sh -c "$1"; }
+	x 'mkdir -p /etc/litebox/rules'
+	docker cp "$WORK/cn_ip.list" "$c:/etc/litebox/rules/cn_ip.list"
+	x 'uhttpd -p 127.0.0.1:8765 -h /root/sub'
+	out=$(x 'sh /root/litebox/install.sh --yes --sub "http://127.0.0.1:8765/sub.yaml" < /dev/null 2>&1') || true
+	if echo "$out" | grep -q '安装完成，已启动'; then ok "安装完成"; else bad "安装完成"; echo "$out" | tail -8; return; fi
+	x 'for i in $(seq 1 30); do [ -f /tmp/litebox-fw.state ] && break; sleep 1; done' || true
+	check "国内 IP 段装进 ipset（6000 段以上）" x '[ "$(ipset list litebox_cn | grep -c "^[0-9]")" -gt 6000 ]'
+	check "状态：bypass + redir" x 'grep -q "^bypass:" /tmp/litebox-fw.state && grep -q "^redir:7892" /tmp/litebox-fw.state'
+	check "策略路由排在内核规则前（8999）" x 'ip rule | grep -q "^8999:.*fwmark 0x20000000/0x20000000 lookup main"'
+	check "mangle 给国内 IP 打标记" x 'iptables -w -t mangle -S LITEBOX_MARK | grep -q "match-set litebox_cn dst"'
+	check "nat 转发 TCP，国内 IP 跳过" x 'iptables -w -t nat -S LITEBOX_NAT | grep -q "match-set litebox_cn dst -j RETURN" && iptables -w -t nat -S LITEBOX_NAT | grep -q "REDIRECT --to-ports 7892"'
+	check "doctor 显示加速生效" x 'litebox doctor | grep -q "国内 IP 直连，不进内核"'
+	x '/etc/init.d/firewall restart >/dev/null 2>&1; for i in $(seq 1 30); do iptables -w -t nat -S PREROUTING | grep -q LITEBOX_NAT && break; sleep 1; done' || true
+	check "重载防火墙后规则自动加回" x 'iptables -w -t nat -S PREROUTING | grep -q LITEBOX_NAT && iptables -w -t mangle -S PREROUTING | grep -q LITEBOX_MARK'
+	x 'litebox stop >/dev/null 2>&1; sleep 1' || true
+	check "stop 后规则、策略路由、ipset 全部撤掉" x '! iptables -w -t nat -S | grep -q LITEBOX && ! ip rule | grep -q 8999 && ! ipset list -n | grep -q litebox'
+	x 'litebox start >/dev/null 2>&1; for i in $(seq 1 30); do [ -f /tmp/litebox-fw.state ] && break; sleep 1; done' || true
+	x 'litebox uninstall --purge >/dev/null 2>&1' || true
+	check "卸载后什么都不留" x '! iptables -w -t nat -S | grep -q LITEBOX && ! iptables -w -t mangle -S | grep -q LITEBOX && ! ip rule | grep -q 8999 && ! ipset list -n | grep -q litebox && ! uci -q get firewall.litebox_inc'
+	docker rm -f "$c" >/dev/null
+}
+
 run_round offline "--network none"
 run_round online ""
 run_conflict
+run_ipset
 
 echo
 if [ "$FAILS" = 0 ]; then

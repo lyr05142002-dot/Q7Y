@@ -33,8 +33,8 @@ fetch_verified() { # URL 输出文件 SHA256
 # 只含脚本的包：litebox.tar.gz（get.sh 用）和 litebox.zip
 mkdir -p "$WORK/scripts/litebox/files"
 cp install.sh README.md "$WORK/scripts/litebox/"
-cp files/config.yaml.tpl files/litebox files/litebox.init "$WORK/scripts/litebox/files/"
-chmod 755 "$WORK/scripts/litebox/install.sh" "$WORK/scripts/litebox/files/litebox" "$WORK/scripts/litebox/files/litebox.init"
+cp files/* "$WORK/scripts/litebox/files/"
+chmod 755 "$WORK/scripts/litebox/install.sh" "$WORK/scripts/litebox/files/litebox" "$WORK/scripts/litebox/files/litebox.init" "$WORK/scripts/litebox/files/litebox-firewall.sh"
 (cd "$WORK/scripts" && tar --owner=0 --group=0 -czf "$DIST/litebox.tar.gz" litebox && zip -qr "$DIST/litebox.zip" litebox)
 
 # 离线包：脚本 + arm64 内核 + 面板 + 许可证

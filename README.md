@@ -21,6 +21,7 @@
 
 - **一条命令装好**：登录路由器粘贴一条命令、一路回车。自动沿用 OpenClash 里已有的订阅、自动停用冲突插件，装不上自动切回原样
 - **GL 官方固件直接装**：GL 固件是 OpenWrt 21.02，[Open-Box](https://github.com/liandu2024/Open-Box) 要求 OpenWrt 24 以上装不了；LiteBox 专门按 21.02 写，不用刷机
+- **国内流量不进内核**：国内网站直接从 WAN 出去，不占代理的 CPU，还能用上路由器的硬件加速；境外 TCP 走 iptables 转发，比 TUN 省约 70% CPU
 - **省内存**：只有一个 mihomo 进程，常驻约 50MB，大流量下也不涨；超过上限自动重启
 - **分流规则现成的**：用[视频作者](https://youtu.be/G_7AmjfSRQ8)的[域名集](https://github.com/liandu2024/clash/tree/main/list)，每天自动更新；ChatGPT / Claude / Gemini / Grok 等走单独的 🤖 AI 分组
 - **手机版**：安卓、iPhone 用同一套规则，出门在外也一样分流
@@ -57,20 +58,25 @@
 
 ## 和 OpenClash 比
 
-在云端用同一个 mihomo 内核（v1.19.31）、同一份订阅和分流规则，把 LiteBox 和最新的 OpenClash（v0.47.156，默认 fake-ip 模式）各装一台测试路由器，依次测同样的项目：
+在云端同一台测试路由器、同一部测试手机上，用同一个 mihomo 内核（v1.19.31）、同一份订阅和分流规则，依次装 LiteBox 和最新的 OpenClash（v0.47.156，fake-ip 模式），下载同一个 22MB 文件，记录代理内核用掉的 CPU：
+
+| | 国内网站：内核 CPU / 速度 | 境外网站：内核 CPU | 内存 |
+|---|---|---|---|
+| **LiteBox v0.4（默认）** | **0ms** / 1050–1310 MB/s | **70–80ms** | 51MB |
+| OpenClash 默认设置 | 20–30ms / 420–740 MB/s | 60–70ms | 51MB |
+| OpenClash 开「绕过中国大陆 IP」 | 0ms / 1220–1490 MB/s | 80–130ms | 51MB |
+| LiteBox v0.3 及以前（只用 TUN） | 210–340ms / 75–114 MB/s | 270–390ms | 50MB |
+
+其他方面：
 
 | 项目 | LiteBox | OpenClash | 说明 |
 |---|---|---|---|
-| 内存（空闲 / 压测后） | 47–50MB | 46–49MB | 同一个内核，几乎一样 |
 | 新域名 DNS 解析 | **0.8ms** | 24ms | OpenClash 默认把每个 fake-ip 映射写进闪存（`store-fake-ip`），LiteBox 关掉了：把 LiteBox 也打开后同样变成 23ms |
-| 打开网页首字节 | 129ms | 123ms | 一样 |
-| 下载速度 | 44MB/s | 43–48MB/s | 一样（瓶颈在测试节点） |
-| 每 21MB 下载的内核 CPU | 200–250ms | **100–160ms** | OpenClash 用 iptables 转发 TCP，比 LiteBox 的 TUN 省 40% 左右 CPU；OpenClash 切到 TUN 模式后是 240–290ms |
 | 重启到恢复代理 | **6–7 秒** | 9–10 秒 | |
 | 占用存储（不含内核） | **约 6MB** | 约 25MB，另需 Ruby、bash、dnsmasq-full 等依赖 | |
 | 功能 | 够用：分组、分流、面板、自检 | **多得多**：订阅转换、覆写、多种代理模式、LuCI 页面里改各种设置 | |
 
-简单说：**跑起来一样快、内存一样多**；LiteBox 的 DNS 更快、更省存储、装和管更简单，OpenClash 功能更全、转发更省 CPU。已经在用 OpenClash 而且满意的，没必要换；想要轻量、省心，或者 OpenClash 装不上的，用 LiteBox。
+简单说：**同一个内核，速度、内存一样**；LiteBox 开箱就是 OpenClash 调好之后的水平（国内不进内核、境外走 iptables 转发），DNS 更快、更省存储、装和管更简单；OpenClash 功能更全。已经在用 OpenClash 而且满意的，没必要换。
 
 ## 下载
 
@@ -110,6 +116,7 @@ Open-Box 有些做法很实用，LiteBox 用自己的方式实现了：
 | 开着硬件流量卸载的联发科机器出问题时换 gvisor 协议栈 | `litebox stack gvisor`；`litebox doctor` 发现开着流量卸载会提示 |
 | 安卓 App 的「本地分流」：手机按路由器同一套规则自己分流 | [手机版](#手机版)：安卓（FlClash / Clash Meta）和 iPhone（Shadowrocket）配置，不用装专门的 App |
 | 一键升级 | `litebox update`（配置和订阅保留，下载包校验 SHA256） |
+| 直连不进内核 | 国内域名返回真实 IP，国内 IP 由防火墙直接放行走 WAN；境外 TCP 用 iptables 转发（`litebox accel on/off`） |
 
 ### 内存控制
 
@@ -269,6 +276,7 @@ sh /tmp/litebox/install.sh
 | `litebox log` | 最近的内核日志 |
 | `litebox direct` | **上不了网时用**：立即恢复直连并关闭开机自启 |
 | `litebox update` | 升级到最新版，配置和订阅保留（连不上 GitHub 时加 `--mirror https://ghfast.top`） |
+| `litebox accel` / `on` / `off` | 查看 / 开关流量加速（国内 IP 不进内核、TCP 走 iptables 转发，默认开） |
 | `litebox quic on` / `off` | 屏蔽 / 放行走代理的 QUIC（默认屏蔽） |
 | `litebox stack gvisor` | 切换 TUN 协议栈（`system` 默认 / `gvisor` / `mixed`），开着硬件加速出问题时用 |
 | `litebox switch-back` | 停用 LiteBox，恢复安装时停用的 OpenClash 等插件 |
@@ -282,7 +290,12 @@ sh /tmp/litebox/install.sh
 
 ## 工作原理
 
-- **流量**：mihomo 创建 `litebox0` 虚拟网卡并接管路由（tun + auto-route），局域网设备的流量经它按规则分流；192.168.x.x 等内网地址不进内核
+- **流量**：分三路
+  - 国内 IP：防火墙（mangle 打标记 + 优先级 8999 的策略路由）直接走 WAN，**不进内核**，能用上硬件加速
+  - 其余 TCP：iptables REDIRECT 到内核的 7892 端口，比经过 TUN 省 CPU
+  - 其余 UDP：经 `litebox0` 虚拟网卡（TUN）交给内核
+  - 规则由 `/usr/lib/litebox/firewall.sh` 管理，防火墙重载后自动加回。系统没有 ipset / ip-full，或者是 fw4 时，自动退回到全部走 TUN 的方式（`litebox doctor` 会写明原因），一样能用
+- **分流**：国内域名在 DNS 阶段就返回真实 IP（`fake-ip-filter-mode: rule`，顺序和分流规则一致），其余域名用 fake-ip；拿到真实 IP 的连接靠嗅探 TLS / HTTP / QUIC 认出域名
 - **DNS**：dnsmasq 把查询转给内核（127.0.0.1:1053，fake-ip 模式）。启动时自动设置，停止或卸载时原样恢复（原设置备份在 `/etc/litebox/dnsmasq.bak`）
 - **防火墙**：安装时添加 `litebox` 区域，并允许 lan → litebox 转发，卸载时删除
 - **文件位置**：内核在 `/usr/lib/litebox/`，配置、规则、面板、订阅缓存在 `/etc/litebox/`
@@ -290,6 +303,8 @@ sh /tmp/litebox/install.sh
 ## 已知限制
 
 - IPv6 流量不经过代理。GL 固件默认关闭 IPv6，建议保持关闭
+- 国内 IP 不进内核需要 ipset 和 ip-full（GL 固件一般自带）。没有时国内流量照常经过内核，只是多占 CPU
+- 路由器自己发出的流量（比如 `litebox update`）仍全部经过内核，不影响局域网设备
 - 访客网络（guest）默认不走代理
 - 设备自己设置的 DoH（比如浏览器的「安全 DNS」）会绕过路由器 DNS，按 IP 分流时可能不准，建议关掉
 - 按 GL 固件的 OpenWrt 21.02 设计，在云端的 OpenWrt 21.02.7 上完整测试过，**还没在 GL-MT3600BE 真机上验证**。第一次安装时建议留一根网线，出问题就执行 `litebox direct`

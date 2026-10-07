@@ -3,6 +3,8 @@
 # 订阅地址请用 `litebox sub <新地址>` 修改（它只改带 LITEBOX_SUB 标记的那一行）。
 
 mixed-port: __MIXED_PORT__
+# TCP 由防火墙 REDIRECT 到这里（比经过 TUN 省 CPU），见 /usr/lib/litebox/firewall.sh
+redir-port: 7892
 allow-lan: true
 bind-address: "*"
 mode: rule
@@ -44,6 +46,19 @@ tun:
     - 169.254.0.0/16
     - 224.0.0.0/4
 
+# 拿到真实 IP 的连接（国内域名、直接按 IP 访问）从 TLS / HTTP / QUIC 里认出域名，按域名分流
+sniffer:
+  enable: true
+  force-dns-mapping: true
+  parse-pure-ip: true
+  sniff:
+    HTTP:
+      ports: [80, 8080-8880]
+    TLS:
+      ports: [443, 8443]
+    QUIC:
+      ports: [443, 8443]
+
 # 局域网设备照常向路由器的 dnsmasq 查询，dnsmasq 再转给这里（litebox 启动时自动设置，停止时恢复）
 dns:
   enable: true
@@ -51,17 +66,28 @@ dns:
   ipv6: false
   enhanced-mode: fake-ip
   fake-ip-range: 198.18.0.1/16
+  # 国内域名返回真实 IP，配合防火墙让国内流量直接走 WAN、不进内核；顺序和下面的分流规则一致
+  fake-ip-filter-mode: rule
   fake-ip-filter:
-    - '*.lan'
-    - '*.local'
-    - '*.localdomain'
-    - '+.msftconnecttest.com'
-    - '+.msftncsi.com'
-    - '+.pool.ntp.org'
-    - 'time.*.com'
-    - 'ntp.*.com'
-    - '+.stun.*.*'
-    - 'localhost.ptlogin2.qq.com'
+    - DOMAIN-SUFFIX,lan,real-ip
+    - DOMAIN-SUFFIX,local,real-ip
+    - DOMAIN-SUFFIX,localdomain,real-ip
+    - DOMAIN-SUFFIX,msftconnecttest.com,real-ip
+    - DOMAIN-SUFFIX,msftncsi.com,real-ip
+    - DOMAIN-SUFFIX,pool.ntp.org,real-ip
+    - DOMAIN-REGEX,^(time|ntp)\..*\.com$,real-ip
+    - DOMAIN-REGEX,(^|\.)stun\.[^.]+\.[^.]+$,real-ip
+    - DOMAIN,localhost.ptlogin2.qq.com,real-ip
+    - RULE-SET,lb_direct,real-ip
+    - RULE-SET,lb_ai,fake-ip
+    - RULE-SET,lb_claude,fake-ip
+    - RULE-SET,lb_chatgpt,fake-ip
+    - RULE-SET,lb_gemini,fake-ip
+    - RULE-SET,lb_copilot,fake-ip
+    - RULE-SET,lb_grok,fake-ip
+    - RULE-SET,lb_proxy,fake-ip
+    - RULE-SET,cn_site,real-ip
+    - MATCH,fake-ip
   default-nameserver:
     - 223.5.5.5
     - 119.29.29.29
@@ -194,12 +220,13 @@ rule-providers:
     path: ./rules/cn_site.mrs
     interval: 86400
     proxy: 🚀 节点选择
+  # 文本格式：防火墙也用这份列表建 ipset
   cn_ip:
     type: http
     behavior: ipcidr
-    format: mrs
-    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/cn.mrs
-    path: ./rules/cn_ip.mrs
+    format: text
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/cn.list
+    path: ./rules/cn_ip.list
     interval: 86400
     proxy: 🚀 节点选择
 

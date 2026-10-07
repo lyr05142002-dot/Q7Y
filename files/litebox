@@ -9,6 +9,8 @@ INIT=/etc/init.d/litebox
 DNS_BAK=$HOME_DIR/dnsmasq.bak
 DNS_UPSTREAM=127.0.0.1#1053
 SUB_PLACEHOLDER=https://sub.invalid/litebox-placeholder
+FW=/usr/lib/litebox/firewall.sh
+FW_STATE=/tmp/litebox-fw.state
 
 PANEL_PORT=9090 MIXED_PORT=7890 SECRET="" MEM_SOFT_MB=100 MEM_HARD_MB=180
 [ -f "$CONF" ] && . "$CONF"
@@ -28,6 +30,7 @@ usage() {
   panel             显示面板地址和密钥
   direct            紧急恢复直连（停止并禁用开机自启）
   update [--mirror URL]  升级到最新版（配置和订阅保留）
+  accel [on|off]    查看或开关流量加速（国内 IP 不进内核、TCP 走 iptables 转发）
   quic on|off       屏蔽 / 放行走代理的 QUIC（默认屏蔽，YouTube 等更流畅）
   stack [system|gvisor|mixed]  查看或切换 TUN 协议栈（开着硬件加速出问题时试 gvisor）
   switch-back       停用 LiteBox，恢复安装时停用的代理插件（比如 OpenClash）
@@ -148,6 +151,8 @@ cmd_watchdog() {
 	local pid rss
 	pid=$(core_pid)
 	if [ -z "$pid" ]; then
+		# 内核不在了，先撤掉转发规则，免得 TCP 被转到没人监听的端口
+		[ -f "$FW_STATE" ] && [ -x "$FW" ] && "$FW" stop
 		# dnsmasq.bak 还在 = 应该在运行（stop / direct 都会把它删掉）
 		[ -f "$DNS_BAK" ] || return 0
 		logger -t litebox "内核没有运行，尝试重新启动"
@@ -166,6 +171,10 @@ cmd_watchdog() {
 			logger -t litebox "内核已恢复运行，重新接管 DNS"
 			dns_on
 		fi
+	fi
+	# 加速层的规则被别的程序清掉了（比如手动重载防火墙时出错）就补上
+	if [ ! -f "$FW_STATE" ] && [ -x "$FW" ] && "$INIT" enabled; then
+		"$FW" start
 	fi
 	rss=$(status_kb "$pid" VmRSS)
 	[ -n "$rss" ] || return 0
@@ -276,6 +285,9 @@ cmd_doctor() {
 
 	echo
 	echo "[2] 流量和 DNS 接管"
+	if [ -n "$pid" ]; then
+		fw_doctor
+	fi
 	if [ "$(uci -q get firewall.litebox_zone)" = zone ] && [ "$(uci -q get firewall.litebox_fwd.dest)" = litebox ]; then
 		d_ok "防火墙 litebox 区域已添加"
 	else
@@ -378,6 +390,45 @@ cmd_doctor() {
 	fi
 }
 
+# 防火墙加速层的状态（litebox-firewall.sh 写在 $FW_STATE）
+fw_doctor() {
+	local st b r
+	st=$(cat "$FW_STATE" 2>/dev/null)
+	case "$st" in
+		"") d_warn "流量加速没有生效"; d_hint "litebox restart；还不行可以 litebox accel off 关掉加速，流量照常走 TUN" ; return ;;
+		off) d_ok "流量加速已关闭，全部流量走 TUN（开启：litebox accel on）"; return ;;
+		tun:*) d_ok "只用 TUN：${st#tun:}"; return ;;
+	esac
+	b=$(echo "$st" | sed -n 's/^bypass://p'); r=$(echo "$st" | sed -n 's/^redir://p')
+	if [ -n "$b" ]; then
+		d_ok "国内 IP 直连，不进内核（$b 个 IP 段）"
+	else
+		d_warn "国内流量仍经过内核：$(echo "$st" | sed -n 's/^nobypass://p')"
+		d_hint "能用，只是多占 CPU。GL 固件可以试：opkg update && opkg install ipset ip-full，再 litebox restart"
+	fi
+	if [ -n "$r" ]; then
+		d_ok "TCP 走 iptables 转发（端口 $r），UDP 走 TUN"
+	else
+		d_warn "TCP 仍走 TUN：$(echo "$st" | sed -n 's/^noredir://p')"
+	fi
+}
+
+cmd_accel() {
+	local v
+	case "${1:-}" in
+		on|off)
+			v=1; [ "$1" = off ] && v=0
+			if grep -q '^ACCEL=' "$CONF" 2>/dev/null; then sed -i "s/^ACCEL=.*/ACCEL=$v/" "$CONF"; else echo "ACCEL=$v" >> "$CONF"; fi
+			if [ -n "$(core_pid)" ] && [ -x "$FW" ]; then "$FW" start; fi
+			[ "$v" = 1 ] && echo "流量加速已开启。" || echo "流量加速已关闭，全部流量走 TUN。" ;;
+		"")
+			[ -n "$(core_pid)" ] || die "内核没有运行。"
+			DOC_FAIL=0 DOC_WARN=0
+			fw_doctor ;;
+		*) die "用法：litebox accel on|off" ;;
+	esac
+}
+
 # 切换配置里带标记的一行，检查通过后重启生效；不通过就还原
 edit_config() { # 说明 sed表达式
 	cp "$CONFIG" "$CONFIG.bak"
@@ -458,6 +509,7 @@ cmd_uninstall() {
 	dns_off
 	uci -q delete firewall.litebox_zone
 	uci -q delete firewall.litebox_fwd
+	uci -q delete firewall.litebox_inc
 	uci commit firewall
 	/etc/init.d/firewall reload >/dev/null 2>&1
 	sed -i '/# litebox$/d' /etc/crontabs/root 2>/dev/null
@@ -489,6 +541,7 @@ case "${1:-}" in
 	watchdog) cmd_watchdog ;;
 	update) shift; cmd_update "$@" ;;
 	quic) cmd_quic "${2:-}" ;;
+	accel) cmd_accel "${2:-}" ;;
 	stack) cmd_stack "${2:-}" ;;
 	dns-on) dns_on ;;
 	dns-off) dns_off ;;

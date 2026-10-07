@@ -115,7 +115,12 @@ pull "$IMAGE"
 pull "$IMAGE_IPSET"
 
 ok() { echo "  ✓ $*"; }
-bad() { echo "  ✗ $*"; FAILS=$((FAILS + 1)); }
+bad() {
+	echo "  ✗ $*"
+	FAILS=$((FAILS + 1))
+	# 在 GitHub Actions 上同时记成注解：日志看不到时，从运行页面或接口也能知道哪一项失败
+	if [ -n "${GITHUB_ACTIONS:-}" ]; then echo "::error title=测试失败::${CUR_ROUND:-}：$*"; fi
+}
 check() { # 说明 命令…
 	local what=$1
 	shift
@@ -124,6 +129,7 @@ check() { # 说明 命令…
 
 run_round() { # 名字 docker网络参数
 	local name=$1 net=$2 c out
+	CUR_ROUND=$name
 	c=lb-$name
 	echo
 	echo "== $name"
@@ -141,7 +147,7 @@ run_round() { # 名字 docker网络参数
 	out=$(x 'sh /root/litebox/install.sh --sub "http://127.0.0.1:8765/sub.yaml?token=SECRET&a=it'"'"'s" < /dev/null 2>&1') || true
 	echo "$out" | sed 's/^/    | /'
 	if echo "$out" | grep -qE 'parameter not set|not found|syntax error|错误：'; then bad "安装输出里有脚本错误"; fi
-	if echo "$out" | grep -q '安装完成'; then ok "安装完成"; else bad "安装没有完成"; return; fi
+	if echo "$out" | grep -q '安装完成'; then ok "安装完成"; else bad "安装没有完成：$(echo "$out" | tail -n 6 | tr '\n' ' ')"; return; fi
 	sleep 3
 
 	check "服务在运行" x 'litebox status | grep -q 运行中'
@@ -251,6 +257,7 @@ run_round() { # 名字 docker网络参数
 # 已经装了别的代理插件（模拟 OpenClash：procd 服务 + 把 dnsmasq 指向 7874 + 订阅存在 uci 里）
 run_conflict() {
 	local c=lb-conflict out
+	CUR_ROUND=conflict
 	echo
 	echo "== 已装 OpenClash 的路由器"
 	docker rm -f "$c" >/dev/null 2>&1 || true
@@ -319,6 +326,7 @@ chmod 755 /etc/init.d/passwall; /etc/init.d/passwall disable; /etc/init.d/opencl
 # 带 ipset 的系统：国内 IP 不进内核 + TCP 转发，全套加速
 run_ipset() {
 	local c=lb-ipset out
+	CUR_ROUND=ipset
 	echo
 	echo "== 带 ipset 的路由器（完整加速层）"
 	docker rm -f "$c" >/dev/null 2>&1 || true

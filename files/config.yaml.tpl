@@ -123,6 +123,7 @@ proxy-providers:
 
 proxy-groups:
   - name: 🚀 节点选择
+    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="none" stroke="rgb(47,111,222)" stroke-width="2"/><path d="M2.5 12h19M12 2.5c3.2 3.4 3.2 15.6 0 19M12 2.5c-3.2 3.4-3.2 15.6 0 19" fill="none" stroke="rgb(47,111,222)" stroke-width="1.6"/></svg>'
     type: select
     proxies:
       - ♻️ 自动选择
@@ -130,6 +131,7 @@ proxy-groups:
     use:
       - sub
   - name: ♻️ 自动选择
+    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.5 1.5 4 13.5h6.5l-1 9 9.5-12h-6.5z" fill="rgb(232,160,20)"/></svg>'
     type: url-test
     use:
       - sub
@@ -138,6 +140,7 @@ proxy-groups:
     tolerance: 50
     lazy: true
   - name: 🤖 AI
+    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 1.5l2.6 7.9L22.5 12l-7.9 2.6L12 22.5l-2.6-7.9L1.5 12l7.9-2.6z" fill="rgb(124,58,237)"/></svg>'
     type: select
     proxies:
       - 🚀 节点选择
@@ -145,6 +148,7 @@ proxy-groups:
     use:
       - sub
   - name: 📺 流媒体
+    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2C0 8.1 0 12 0 12s0 3.9.5 5.8a3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.5 15.6V8.4l6.3 3.6z" fill="rgb(255,0,0)"/></svg>'
     type: select
     proxies:
       - 🚀 节点选择
@@ -152,6 +156,7 @@ proxy-groups:
     use:
       - sub
   - name: 🐟 漏网之鱼
+    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M1.5 12c3-5.2 9.5-6.4 13.6-2.6L21.5 5v14l-6.4-4.4C11 18.4 4.5 17.2 1.5 12z" fill="rgb(14,165,233)"/><circle cx="7" cy="11" r="1.3" fill="rgb(255,255,255)"/></svg>'
     type: select
     proxies:
       - 🚀 节点选择

@@ -92,6 +92,15 @@ run_round() { # 名字 docker网络参数
 	check "doctor 能跑完" x 'litebox doctor | grep -q 结论'
 	check "doctor 不泄露订阅 token" x '! litebox doctor | grep -q SECRET'
 	check "订阅地址原样保存（含 & 和单引号）" x '[ "$(litebox sub)" = "http://127.0.0.1:8765/sub.yaml?token=SECRET&a=it'"'"'s" ]'
+	check "分组带图标" x 'grep -q "^    icon: '"'"'data:image/svg+xml," /etc/litebox/config.yaml'
+	# 离线安装时面板还没下载：这时不能先建 ui/ 目录，否则内核以为面板已存在、不再下载
+	check "面板没下载时不提前建面板目录" x '[ -f /etc/litebox/ui/index.html ] || [ ! -e /etc/litebox/ui ]'
+	check "概览页放进了面板目录" x '[ -f /etc/litebox/ui/index.html ] || exit 0; [ -f /etc/litebox/ui/litebox/index.html ] && [ -L /etc/litebox/ui/litebox/traffic.txt ]'
+	check "面板能打开概览页" x '[ -f /etc/litebox/ui/index.html ] || exit 0; wget -q -O - http://127.0.0.1:9090/ui/litebox/ | grep -q "LiteBox 概览"'
+	check "面板目录被换掉后看门狗补回概览页" x '[ -f /etc/litebox/ui/index.html ] || exit 0; rm -rf /etc/litebox/ui/litebox && litebox watchdog && [ -f /etc/litebox/ui/litebox/index.html ]'
+	# 下面两项要用 curl 调内核接口，镜像里没有 curl 时跳过
+	check "看门狗按天记录流量" x 'command -v curl >/dev/null || exit 0; litebox watchdog; grep -q "^$(date +%F) [0-9][0-9]* [0-9][0-9]*$" /tmp/litebox-traffic.txt && [ -f /etc/litebox/traffic.txt ] && wget -q -O - http://127.0.0.1:9090/ui/litebox/traffic.txt | grep -q "^$(date +%F) "'
+	check "litebox route 能跑完" x 'command -v curl >/dev/null || exit 0; litebox route example.com | grep -q 访问结果'
 
 	check "quic off" x 'litebox quic off && litebox quic | grep -q 已放行'
 	check "quic on" x 'litebox quic on && litebox quic | grep -q 已屏蔽'
@@ -194,7 +203,8 @@ run_ipset() {
 	docker cp "$PKG" "$c:/root/litebox"
 	docker cp "$WORK/sub" "$c:/root/sub"
 	x() { docker exec "$c" sh -c "$1"; }
-	x 'mkdir -p /etc/litebox/rules'
+	# 容器没有网络下不了面板，放一个占位的面板首页，用来测概览页的安装和补回
+	x 'mkdir -p /etc/litebox/rules /etc/litebox/ui && echo zashboard > /etc/litebox/ui/index.html'
 	docker cp "$WORK/cn_ip.list" "$c:/etc/litebox/rules/cn_ip.list"
 	x 'uhttpd -p 127.0.0.1:8765 -h /root/sub'
 	out=$(x 'sh /root/litebox/install.sh --yes --sub "http://127.0.0.1:8765/sub.yaml" < /dev/null 2>&1') || true
@@ -206,6 +216,10 @@ run_ipset() {
 	check "mangle 给国内 IP 打标记" x 'iptables -w -t mangle -S LITEBOX_MARK | grep -q "match-set litebox_cn dst"'
 	check "nat 转发 TCP，国内 IP 跳过" x 'iptables -w -t nat -S LITEBOX_NAT | grep -q "match-set litebox_cn dst -j RETURN" && iptables -w -t nat -S LITEBOX_NAT | grep -q "REDIRECT --to-ports 7892"'
 	check "doctor 显示加速生效" x 'litebox doctor | grep -q "国内 IP 直连，不进内核"'
+	# 面板首页已在（上面放的占位文件），概览页必须到位
+	check "概览页放进了面板目录" x '[ -f /etc/litebox/ui/litebox/index.html ] && [ -L /etc/litebox/ui/litebox/traffic.txt ]'
+	check "面板能打开概览页和流量记录" x 'litebox watchdog; wget -q -O - http://127.0.0.1:9090/ui/litebox/ | grep -q "LiteBox 概览" && wget -q -O - http://127.0.0.1:9090/ui/litebox/traffic.txt | grep -q "^$(date +%F) "'
+	check "面板目录被换掉后看门狗补回概览页" x 'rm -rf /etc/litebox/ui/litebox && litebox watchdog && [ -f /etc/litebox/ui/litebox/index.html ]'
 	x '/etc/init.d/firewall restart >/dev/null 2>&1; for i in $(seq 1 30); do iptables -w -t nat -S PREROUTING | grep -q LITEBOX_NAT && break; sleep 1; done' || true
 	check "重载防火墙后规则自动加回" x 'iptables -w -t nat -S PREROUTING | grep -q LITEBOX_NAT && iptables -w -t mangle -S PREROUTING | grep -q LITEBOX_MARK'
 	x 'litebox stop >/dev/null 2>&1; sleep 1' || true

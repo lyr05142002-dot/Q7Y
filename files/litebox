@@ -11,6 +11,11 @@ DNS_UPSTREAM=127.0.0.1#1053
 SUB_PLACEHOLDER=https://sub.invalid/litebox-placeholder
 FW=/usr/lib/litebox/firewall.sh
 FW_STATE=/tmp/litebox-fw.state
+PANEL_SRC=/usr/lib/litebox/panel.html
+# 按天的流量记录，一行一天：日期 上传字节 下载字节。运行中写 /tmp，每小时存回闪存一次，少磨闪存
+TRAFFIC_DB=$HOME_DIR/traffic.txt
+TRAFFIC_RUN=/tmp/litebox-traffic.txt
+TRAFFIC_LAST=/tmp/litebox-traffic.last
 
 PANEL_PORT=9090 MIXED_PORT=7890 SECRET="" MEM_SOFT_MB=100 MEM_HARD_MB=180
 [ -f "$CONF" ] && . "$CONF"
@@ -28,6 +33,7 @@ usage() {
   check             检查配置文件
   log               查看最近的内核日志
   panel             显示面板地址和密钥
+  route <域名>      路由器实际访问一次，看 DNS、命中的规则和走的线路
   direct            紧急恢复直连（停止并禁用开机自启）
   update [--mirror URL]  升级到最新版（配置和订阅保留）
   accel [on|off]    查看或开关流量加速（国内 IP 不进内核、TCP 走 iptables 转发）
@@ -58,6 +64,40 @@ show_panel() {
 	ip=$(lan_ip)
 	echo "一键登录：http://$ip:$PANEL_PORT/ui/#/setup?hostname=$ip&port=$PANEL_PORT&secret=$SECRET"
 	echo "手动登录：主机 $ip，端口 $PANEL_PORT，密码 $SECRET"
+	echo "概览和路由测试：http://$ip:$PANEL_PORT/ui/litebox/#secret=$SECRET"
+}
+
+# 把概览页放进面板目录。只在缺的时候补（比如在 zashboard 里点了「更新面板」把目录整个换掉了），
+# 面板本身还没下载好时不动，免得内核以为面板已存在、不再下载
+panel_sync() {
+	local dir=$HOME_DIR/ui/litebox
+	[ -f "$PANEL_SRC" ] && [ -f "$HOME_DIR/ui/index.html" ] || return 0
+	[ -d "$dir" ] || mkdir -p "$dir"
+	[ -f "$dir/index.html" ] || cp "$PANEL_SRC" "$dir/index.html"
+	[ -f "$TRAFFIC_RUN" ] || { [ -f "$TRAFFIC_DB" ] && cp "$TRAFFIC_DB" "$TRAFFIC_RUN"; }
+	[ -L "$dir/traffic.txt" ] || ln -sf "$TRAFFIC_RUN" "$dir/traffic.txt"
+}
+
+# 累计经过内核的流量（由看门狗每 5 分钟调用）。内核给的是启动以来的总量，按 pid 判断有没有重启过
+traffic_tick() { # 内核pid
+	local snap up down lp="" lu=0 ld=0 hour
+	snap=$(api /connections) || return 0
+	up=$(echo "$snap" | jsonfilter -e '@.uploadTotal' 2>/dev/null)
+	down=$(echo "$snap" | jsonfilter -e '@.downloadTotal' 2>/dev/null)
+	case "$up:$down" in *[!0-9:]*|:*|*:) return 0 ;; esac
+	[ -f "$TRAFFIC_RUN" ] || { [ -f "$TRAFFIC_DB" ] && cp "$TRAFFIC_DB" "$TRAFFIC_RUN"; } || : > "$TRAFFIC_RUN"
+	[ -f "$TRAFFIC_LAST" ] && read -r lp lu ld < "$TRAFFIC_LAST"
+	awk -v d="$(date +%F)" -v same="$([ "$lp" = "$1" ] && echo 1)" -v u="$up" -v w="$down" -v lu="${lu:-0}" -v lw="${ld:-0}" '
+		BEGIN { du = u; dw = w; if (same && u >= lu && w >= lw) { du = u - lu; dw = w - lw } }
+		$1 == d { $2 += du; $3 += dw; f = 1 }
+		NF >= 3 { printf "%s %.0f %.0f\n", $1, $2, $3 }
+		END { if (!f) printf "%s %.0f %.0f\n", d, du, dw }' "$TRAFFIC_RUN" | tail -n 800 > "$TRAFFIC_RUN.new" \
+		&& mv -f "$TRAFFIC_RUN.new" "$TRAFFIC_RUN"
+	echo "$1 $up $down" > "$TRAFFIC_LAST"
+	hour=$(date +%Y%m%d%H)
+	if [ "$(cat /tmp/litebox-traffic.saved 2>/dev/null)" != "$hour" ]; then
+		cp "$TRAFFIC_RUN" "$TRAFFIC_DB" && echo "$hour" > /tmp/litebox-traffic.saved
+	fi
 }
 
 check_config() {
@@ -176,6 +216,8 @@ cmd_watchdog() {
 	if [ ! -f "$FW_STATE" ] && [ -x "$FW" ] && "$INIT" enabled; then
 		"$FW" start
 	fi
+	panel_sync
+	traffic_tick "$pid"
 	rss=$(status_kb "$pid" VmRSS)
 	[ -n "$rss" ] || return 0
 	if [ "$((rss / 1024))" -gt "$MEM_HARD_MB" ]; then
@@ -496,6 +538,49 @@ cmd_update() {
 	return $rc
 }
 
+# 路由器自己实际访问一次，从内核的连接日志里找出这次访问命中的规则和线路
+# （日志接口能按 info 级别订阅，不受配置里 log-level 的影响；访问再快、连接已经关掉也查得到）
+cmd_route() { # 域名
+	local host ip real code t log lpid line rule chain
+	host=$(echo "${1:-}" | tr 'A-Z' 'a-z' | sed -e 's#^[a-z]*://##' -e 's#[/?:].*##')
+	[ -n "$host" ] || die "用法：litebox route 域名（例如 litebox route github.com）"
+	case "$host" in *[!a-z0-9.-]*) die "请输入域名，例如 github.com" ;; esac
+	[ -n "$(core_pid)" ] || die "内核没有运行。"
+	command -v curl >/dev/null 2>&1 || die "需要 curl：opkg update && opkg install curl"
+	echo "域名：$host"
+	ip=$(nslookup "$host" 127.0.0.1 2>/dev/null | sed -n 's/^Address[ 0-9]*: *\([0-9.]*\)$/\1/p' | grep -v '^127\.' | head -n 1)
+	real=$(api "/dns/query?name=$host&type=A" | jsonfilter -e '@.Answer[*].data' 2>/dev/null | grep -E '^[0-9.]+$' | head -n 3 | tr '\n' ' ')
+	case "$ip" in
+		198.18.*|198.19.*) echo "DNS：拿到 $ip（FakeIP 占位地址，由内核按规则决定线路）${real:+；内核实际解析 $real}" ;;
+		"") echo "DNS：路由器没解析出 IPv4 地址${real:+（内核解析结果 $real）}" ;;
+		*) echo "DNS：真实 IP $ip（直连域名或国内网站，不用 FakeIP）" ;;
+	esac
+	log=/tmp/litebox-route.$$
+	curl -sN -m 15 --noproxy '*' -H "Authorization: Bearer $SECRET" "http://127.0.0.1:$PANEL_PORT/logs?level=info" > "$log" 2>/dev/null &
+	lpid=$!
+	sleep 1
+	set -- $(curl -s -o /dev/null -m 10 --noproxy '*' -w '%{http_code} %{time_total}' "https://$host/" 2>/dev/null)
+	code=${1:-000} t=${2:-}
+	sleep 1
+	kill "$lpid" 2>/dev/null
+	# 日志是一行一个 JSON，「-->」里的 > 被转义成 \u003e
+	line=$(grep -F -- "u003e $host:" "$log" | head -n 1 | jsonfilter -e '@.payload' 2>/dev/null)
+	rm -f "$log"
+	if [ -n "$line" ]; then
+		rule=$(echo "$line" | sed -n 's/.* match \(.*\) using .*/\1/p; s/.*(match \([^)]*\)).*/\1/p' | head -n 1)
+		chain=$(echo "$line" | sed -n 's/.* using \(.*\)$/\1/p; s/.*dial \(.*\) (match.*/\1/p' | head -n 1)
+		echo "命中规则：${rule:-未知}"
+		echo "线路：${chain:-未知}（格式：分组[最终节点]）"
+		case "$line" in *error:*) echo "内核报错：$(echo "$line" | sed 's/.*error: //' | mask_urls | cut -c 1-160)" ;; esac
+	else
+		echo "内核日志里没有这次访问：没有经过内核（比如国内 IP 被加速层直接放行），或者没连出去"
+	fi
+	case "$code" in
+		000) echo "访问结果：失败（连不上，或 10 秒超时）" ;;
+		*) echo "访问结果：HTTP $code，用时 ${t}s" ;;
+	esac
+}
+
 # 安装时停用过的其他代理插件（openclash 等），一行一个
 OTHERS_FILE=$HOME_DIR/others-stopped
 
@@ -551,6 +636,8 @@ case "${1:-}" in
 	check) check_config ;;
 	log) logread 2>/dev/null | grep -E 'litebox|mihomo' | tail -n "${2:-50}" ;;
 	panel) show_panel ;;
+	panel-sync) panel_sync ;;
+	route) cmd_route "${2:-}" ;;
 	direct) "$INIT" stop; "$INIT" disable; dns_off; echo "已恢复直连，开机不再自启（恢复：litebox start && /etc/init.d/litebox enable）。" ;;
 	watchdog) cmd_watchdog ;;
 	update) shift; cmd_update "$@" ;;

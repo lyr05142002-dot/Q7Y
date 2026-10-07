@@ -24,6 +24,7 @@ start_service() {
 	procd_close_instance
 
 	/usr/bin/litebox dns-on
+	/usr/bin/litebox panel-sync
 	# 防火墙加速层要等内核开始监听，放后台做，不拖慢启动
 	[ -x /usr/lib/litebox/firewall.sh ] && (/usr/lib/litebox/firewall.sh start >/dev/null 2>&1 &)
 }
@@ -31,4 +32,7 @@ start_service() {
 stop_service() {
 	[ -x /usr/lib/litebox/firewall.sh ] && /usr/lib/litebox/firewall.sh stop
 	/usr/bin/litebox dns-off
+	# 关机、重启前把内存里的流量记录存回闪存
+	[ -f /tmp/litebox-traffic.txt ] && cp /tmp/litebox-traffic.txt "$HOME_DIR/traffic.txt"
+	return 0
 }

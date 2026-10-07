@@ -1,0 +1,675 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LiteBox 概览</title>
+<!-- LiteBox 概览 / 路由测试页：由 install.sh 放到 /etc/litebox/ui/litebox/，和 zashboard 同源，只调用内核自带的接口 -->
+<style>
+:root {
+	--bg: #f4f6f5; --card: #fff; --line: #e5e9e7; --text: #1d2621; --sub: #6b7670;
+	--green: #22a35a; --green-bg: #e7f6ed; --red: #d64545; --red-bg: #fdecec; --amber: #c98a12; --amber-bg: #fdf5e2;
+	--blue: #2f6fde; --chart: #22a35a; --chart2: #3a83f1; --chart3: #8b5cf6; --chart4: #e08a1c;
+}
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) {
+		--bg: #131715; --card: #1c211e; --line: #2c332f; --text: #e4ebe7; --sub: #8f9a94;
+		--green-bg: #173323; --red-bg: #3a1c1c; --amber-bg: #3a2e14;
+	}
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif; }
+a { color: var(--blue); text-decoration: none; }
+header { position: sticky; top: 0; z-index: 5; background: var(--card); border-bottom: 1px solid var(--line); }
+.bar { max-width: 1240px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.logo { font-weight: 800; font-size: 18px; letter-spacing: .5px; display: flex; align-items: center; gap: 8px; }
+.logo i { width: 22px; height: 22px; border-radius: 6px; background: var(--green); display: inline-block; }
+nav { display: flex; gap: 4px; }
+nav button { border: 0; background: none; color: var(--sub); font: inherit; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+nav button.on { background: var(--green-bg); color: var(--green); font-weight: 700; }
+.bar .grow { flex: 1; }
+.bar .meta { color: var(--sub); font-size: 12.5px; }
+main { max-width: 1240px; margin: 0 auto; padding: 16px; }
+section.box { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
+.hd { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.hd h2 { margin: 0; font-size: 17px; }
+.hd .note { color: var(--sub); font-size: 12.5px; }
+.hd .grow { flex: 1; }
+.btn { border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 8px; padding: 5px 12px; font: inherit; cursor: pointer; }
+.btn.pri { background: var(--green); border-color: var(--green); color: #fff; }
+.btn:disabled { opacity: .5; cursor: default; }
+.sw { display: inline-flex; align-items: center; gap: 6px; color: var(--sub); font-size: 12.5px; cursor: pointer; user-select: none; }
+.sw input { accent-color: var(--green); }
+.grid { display: grid; gap: 12px; }
+.g4 { grid-template-columns: repeat(4, 1fr); }
+.g6 { grid-template-columns: repeat(6, 1fr); }
+.g2 { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 960px) { .g4 { grid-template-columns: repeat(2, 1fr); } .g6 { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 560px) {
+	.g2 { grid-template-columns: 1fr; } .g4, .g6 { grid-template-columns: repeat(2, 1fr); }
+	.site { flex-wrap: wrap; gap: 8px; } .site .ic { width: 32px; height: 32px; } .site .spark { order: 3; flex-basis: 100%; height: 22px; }
+	.stat div, .big { font-size: 19px; } .chart svg { height: 80px; }
+}
+.card { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; min-width: 0; }
+.site { display: flex; align-items: center; gap: 12px; }
+.site .ic { width: 40px; height: 40px; border-radius: 10px; background: var(--bg); display: grid; place-items: center; flex: none; }
+.site .ic svg { width: 24px; height: 24px; }
+.site .spark { flex: 1; height: 34px; display: flex; align-items: flex-end; gap: 2px; min-width: 0; }
+.site .spark b { flex: 1; min-width: 2px; max-width: 6px; border-radius: 2px; background: var(--green); opacity: .85; }
+.site .spark b.bad { background: var(--red); }
+.site .spark b.mid { background: var(--amber); }
+.site .val { text-align: right; flex: none; }
+.site .val small { display: block; color: var(--sub); font-size: 12px; }
+.site .val span { font-size: 22px; font-weight: 700; color: var(--green); }
+.site .val span.bad { color: var(--red); font-size: 16px; }
+.site .val span.mid { color: var(--amber); }
+.site .val em { font-style: normal; color: var(--sub); font-size: 12px; margin-left: 2px; }
+.stat { text-align: center; }
+.stat small { color: var(--sub); font-size: 12.5px; }
+.stat div { font-size: 22px; font-weight: 700; white-space: nowrap; }
+.chart small { color: var(--sub); font-size: 12.5px; display: flex; justify-content: space-between; }
+.chart svg { width: 100%; height: 110px; display: block; margin-top: 6px; }
+.chart text { fill: var(--sub); font-size: 10px; }
+.rank { list-style: none; margin: 0; padding: 0; }
+.rank li { padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.rank li:last-child { border-bottom: 0; }
+.rank .row { display: flex; gap: 8px; align-items: baseline; }
+.rank .row .n { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank .row .v { color: var(--sub); font-size: 12.5px; flex: none; }
+.rank .meter { height: 4px; background: var(--line); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+.rank .meter i { display: block; height: 100%; background: var(--chart4); border-radius: 2px; }
+.tag { display: inline-block; font-size: 11.5px; padding: 0 7px; border-radius: 10px; background: var(--bg); color: var(--sub); white-space: nowrap; }
+.tag.g { background: var(--green-bg); color: var(--green); }
+.tag.r { background: var(--red-bg); color: var(--red); }
+.tag.a { background: var(--amber-bg); color: var(--amber); }
+.big { font-size: 24px; font-weight: 700; }
+.months { display: flex; gap: 4px; align-items: center; }
+.months button { border: 0; background: none; color: var(--sub); font: inherit; padding: 4px 10px; border-radius: 8px; cursor: pointer; }
+.months button.on { background: var(--green); color: #fff; font-weight: 700; }
+.months button:disabled { opacity: .35; cursor: default; }
+.days svg { width: 100%; height: 160px; display: block; }
+.days text { fill: var(--sub); font-size: 10px; }
+.empty { color: var(--sub); text-align: center; padding: 24px 8px; }
+.login { max-width: 380px; margin: 60px auto; }
+.login input, .q input { width: 100%; border: 1px solid var(--line); background: var(--bg); color: var(--text); border-radius: 10px; padding: 10px 12px; font: inherit; }
+.q { display: flex; gap: 8px; }
+.q input { flex: 1; }
+.steps { list-style: none; margin: 0; padding: 0; }
+.steps li { display: flex; gap: 12px; padding-bottom: 16px; position: relative; }
+.steps li:not(:last-child)::before { content: ""; position: absolute; left: 14px; top: 30px; bottom: 2px; width: 2px; background: var(--line); }
+.steps .no { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--green); color: var(--green); display: grid; place-items: center; font-weight: 700; flex: none; background: var(--card); }
+.steps .no.r { border-color: var(--red); color: var(--red); }
+.steps .no.s { border-color: var(--line); color: var(--sub); }
+.steps .k { color: var(--sub); font-size: 12.5px; }
+.steps .t { font-size: 15.5px; font-weight: 600; word-break: break-all; }
+.steps .d { color: var(--sub); font-size: 12.5px; word-break: break-all; }
+.mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+.chain { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.chain .ar { color: var(--sub); }
+.tip { background: var(--bg); border-radius: 10px; padding: 10px 12px; color: var(--sub); font-size: 12.5px; margin-top: 12px; }
+.hide { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+	<div class="bar">
+		<div class="logo"><i></i>LiteBox</div>
+		<nav>
+			<button data-tab="ov" class="on">概览</button>
+			<button data-tab="rt">路由测试</button>
+			<button id="zash">节点 · 连接 ↗</button>
+		</nav>
+		<div class="grow"></div>
+		<div class="meta" id="meta"></div>
+	</div>
+</header>
+
+<main>
+	<section class="box login hide" id="login">
+		<div class="hd"><h2>登录 LiteBox</h2></div>
+		<p class="note" style="color:var(--sub);margin-top:0">输入面板密码（在路由器上执行 <span class="mono">litebox panel</span> 可以看到）。</p>
+		<div class="q"><input id="pw" type="password" autocomplete="current-password" placeholder="面板密码"><button class="btn pri" id="pwgo">登录</button></div>
+		<p id="pwerr" style="color:var(--red)"></p>
+	</section>
+
+	<div id="ov" class="hide">
+		<section class="box">
+			<div class="hd">
+				<h2>面板概览</h2>
+				<label class="sw"><input type="checkbox" id="auto" checked>自动测速（每分钟）</label>
+				<div class="grow"></div>
+				<button class="btn" id="testnow">立即测速</button>
+			</div>
+			<div class="grid g4" id="sites"></div>
+			<div class="grid g6" style="margin-top:12px">
+				<div class="card stat"><small>连接数</small><div id="s-conn">-</div></div>
+				<div class="card stat"><small>内存使用</small><div id="s-mem">-</div></div>
+				<div class="card stat"><small>下载总量</small><div id="s-dt">-</div></div>
+				<div class="card stat"><small>下载速率</small><div id="s-ds">-</div></div>
+				<div class="card stat"><small>上传总量</small><div id="s-ut">-</div></div>
+				<div class="card stat"><small>上传速率</small><div id="s-us">-</div></div>
+			</div>
+			<div class="grid g4" style="margin-top:12px">
+				<div class="card chart"><small><span>下载速率</span><span id="c-ds-max"></span></small><svg id="c-ds" viewBox="0 0 300 110" preserveAspectRatio="none"></svg></div>
+				<div class="card chart"><small><span>上传速率</span><span id="c-us-max"></span></small><svg id="c-us" viewBox="0 0 300 110" preserveAspectRatio="none"></svg></div>
+				<div class="card chart"><small><span>内存使用</span><span id="c-mem-max"></span></small><svg id="c-mem" viewBox="0 0 300 110" preserveAspectRatio="none"></svg></div>
+				<div class="card chart"><small><span>连接数</span><span id="c-conn-max"></span></small><svg id="c-conn" viewBox="0 0 300 110" preserveAspectRatio="none"></svg></div>
+			</div>
+		</section>
+
+		<section class="box">
+			<div class="hd">
+				<h2>分流统计</h2>
+				<span class="note">规则命中从内核启动起累计；域名排行从打开本页起累计</span>
+			</div>
+			<div class="grid g4">
+				<div class="card"><small class="k" style="color:var(--sub)">经过内核的连接</small><div class="big" id="f-total">-</div><div class="note" style="color:var(--sub);font-size:12.5px" id="f-total-d"></div></div>
+				<div class="card"><small style="color:var(--sub)">走代理</small><div class="big" style="color:var(--blue)" id="f-proxy">-</div><div style="color:var(--sub);font-size:12.5px" id="f-proxy-d"></div></div>
+				<div class="card"><small style="color:var(--sub)">直连</small><div class="big" style="color:var(--green)" id="f-direct">-</div><div style="color:var(--sub);font-size:12.5px" id="f-direct-d"></div></div>
+				<div class="card"><small style="color:var(--sub)">已拦截</small><div class="big" style="color:var(--amber)" id="f-reject">-</div><div style="color:var(--sub);font-size:12.5px">命中「拒绝」规则的次数（主要是 QUIC）</div></div>
+			</div>
+			<div class="grid g2" style="margin-top:12px">
+				<div class="card"><small style="color:var(--sub)">规则命中排行</small><ul class="rank" id="rules-rank"></ul></div>
+				<div class="card"><small style="color:var(--sub)">域名流量排行</small><ul class="rank" id="hosts-rank"></ul></div>
+			</div>
+		</section>
+
+		<section class="box">
+			<div class="hd">
+				<h2>流量洞察</h2>
+				<span class="note" id="m-sum"></span>
+				<div class="grow"></div>
+				<div class="months" id="months"></div>
+			</div>
+			<div class="days" id="days"></div>
+			<div class="tip">统计的是经过内核的流量（代理 + 内核里的直连），每 5 分钟记一次。开着流量加速时，国内 IP 直接放行、不进内核，不计入这里。</div>
+		</section>
+	</div>
+
+	<div id="rt" class="hide">
+		<section class="box">
+			<div class="hd"><h2>路由测试</h2><span class="note">输入域名，看它实际走哪条线路、DNS 怎么解析、命中哪条规则</span></div>
+			<form class="q" id="rtform"><input id="rtq" placeholder="例如 github.com、youtube.com、baidu.com" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="btn pri" id="rtgo">测试</button></form>
+			<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap" id="rtquick"></div>
+		</section>
+		<section class="box hide" id="rtres">
+			<div class="hd"><h2>真实路由</h2><span class="tag" id="rtstate"></span><span class="note">由这台设备真实发起访问，和手机、电脑平时上网走同一条路</span></div>
+			<ol class="steps" id="rtsteps"></ol>
+		</section>
+		<div class="tip">
+			这台正在看页面的设备就是一台真实的局域网终端：点「测试」时，浏览器会直接访问这个网站，经过路由器的 DNS、防火墙转发和内核分流，
+			页面再从内核的连接记录里找出这次访问命中的规则和线路。所以不用在网桥上临时挂虚拟网口，也不需要虚拟化平台开混杂模式。
+			想看路由器自己访问的结果，在 SSH 里执行 <span class="mono">litebox route 域名</span>。
+		</div>
+	</div>
+</main>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const store = {
+	get(k, d) { try { const v = localStorage.getItem("litebox." + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+	set(k, v) { try { localStorage.setItem("litebox." + k, JSON.stringify(v)); } catch (e) {} },
+};
+
+// 图标（Simple Icons，CC0）和分组用的简单图形
+const ICON = {
+	baidu: '<svg viewBox="0 0 24 24"><path fill="#2932e1" d="M9.154 0C7.71 0 6.54 1.658 6.54 3.707c0 2.051 1.171 3.71 2.615 3.71 1.446 0 2.614-1.659 2.614-3.71C11.768 1.658 10.6 0 9.154 0zm7.025.594C14.86.58 13.347 2.589 13.2 3.927c-.187 1.745.25 3.487 2.179 3.735 1.933.25 3.175-1.806 3.422-3.364.252-1.555-.995-3.364-2.362-3.674a1.218 1.218 0 0 0-.261-.03zM3.582 5.535a2.811 2.811 0 0 0-.156.008c-2.118.19-2.428 3.24-2.428 3.24-.287 1.41.686 4.425 3.297 3.864 2.617-.561 2.262-3.68 2.183-4.362-.125-1.018-1.292-2.773-2.896-2.75zm16.534 1.753c-2.308 0-2.617 2.119-2.617 3.616 0 1.43.121 3.425 2.988 3.362 2.867-.063 2.553-3.238 2.553-3.988 0-.745-.62-2.99-2.924-2.99zm-8.264 2.478c-1.424.014-2.708.925-3.323 1.947-1.118 1.868-2.863 3.05-3.112 3.363-.25.309-3.61 2.116-2.864 5.42.746 3.301 3.365 3.237 3.365 3.237s1.93.19 4.171-.31c2.24-.495 4.17.123 4.17.123s5.233 1.748 6.665-1.616c1.43-3.364-.808-5.109-.808-5.109s-2.99-2.306-4.736-4.798c-1.072-1.665-2.348-2.268-3.528-2.257zm-2.234 3.84l1.542.024v8.197H7.758c-1.47-.291-2.055-1.292-2.13-1.462-.072-.173-.488-.976-.268-2.343.635-2.049 2.447-2.196 2.447-2.196h1.81zm3.964 2.39v3.881c.096.413.612.488.612.488h1.614v-4.343h1.689v5.782h-3.915c-1.517-.39-1.59-1.465-1.59-1.465v-4.317zm-5.458 1.147c-.66.197-.978.708-1.05.928-.076.22-.247.78-.1 1.269.294 1.095 1.248 1.144 1.248 1.144h1.37v-3.34z"/></svg>',
+	google: '<svg viewBox="0 0 24 24"><path fill="#4285f4" d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/></svg>',
+	ai: '<svg viewBox="0 0 24 24"><path fill="#7c3aed" d="M12 1.5l2.6 7.9L22.5 12l-7.9 2.6L12 22.5l-2.6-7.9L1.5 12l7.9-2.6z"/></svg>',
+	github: '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>',
+	youtube: '<svg viewBox="0 0 24 24"><path fill="#ff0000" d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>',
+};
+
+// 四个测试站点：经由哪个分组测，就和平时访问这个网站走的线路一致
+const SITES = [
+	{ id: "baidu", name: "百度", url: "https://www.baidu.com", via: ["DIRECT"] },
+	{ id: "google", name: "Google", url: "https://www.google.com/generate_204", via: ["🚀 节点选择", "GLOBAL"] },
+	{ id: "ai", name: "OpenAI", url: "https://chatgpt.com/favicon.ico", via: ["🤖 AI", "🚀 节点选择", "GLOBAL"] },
+	{ id: "github", name: "GitHub", url: "https://github.com", via: ["🚀 节点选择", "GLOBAL"] },
+];
+
+let SECRET = "";
+let groups = new Set();
+
+async function api(path, opt = {}) {
+	const r = await fetch(path, { ...opt, headers: { Authorization: "Bearer " + SECRET, ...(opt.headers || {}) }, cache: "no-store" });
+	const body = await r.json().catch(() => ({}));
+	if (!r.ok) { const e = new Error(body.message || r.status); e.status = r.status; e.body = body; throw e; }
+	return body;
+}
+
+const fmtBytes = (n) => {
+	if (!(n >= 0)) return "-";
+	const u = ["B", "KB", "MB", "GB", "TB"];
+	let i = 0;
+	while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+	return (i === 0 ? n : n.toFixed(n >= 100 ? 0 : n >= 10 ? 1 : 2)) + " " + u[i];
+};
+const fmtRate = (n) => fmtBytes(n) + "/s";
+
+// ---------- 登录 ----------
+async function login(secret) {
+	SECRET = secret;
+	const v = await api("../../version");
+	store.set("secret", secret);
+	$("#login").classList.add("hide");
+	$("#meta").textContent = "内核 " + (v.version || "");
+	return true;
+}
+
+async function boot() {
+	const m = location.hash.match(/secret=([^&]+)/);
+	const cand = m ? decodeURIComponent(m[1]) : store.get("secret", "");
+	if (m) history.replaceState(null, "", location.pathname);
+	try {
+		await login(cand);
+		start();
+	} catch (e) {
+		$("#login").classList.remove("hide");
+		if (cand) $("#pwerr").textContent = e.status === 401 ? "密码不对" : "连不上内核：" + e.message;
+	}
+}
+
+$("#pwgo").onclick = async () => {
+	$("#pwerr").textContent = "";
+	try { await login($("#pw").value.trim()); start(); }
+	catch (e) { $("#pwerr").textContent = e.status === 401 ? "密码不对" : "连不上内核：" + e.message; }
+};
+$("#pw").onkeydown = (e) => { if (e.key === "Enter") $("#pwgo").click(); };
+$("#zash").onclick = () => { location.href = "../"; };
+
+function showTab(t) {
+	document.querySelectorAll("nav button[data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
+	$("#ov").classList.toggle("hide", t !== "ov");
+	$("#rt").classList.toggle("hide", t !== "rt");
+	store.set("tab", t);
+}
+document.querySelectorAll("nav button[data-tab]").forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
+
+let started = false;
+async function start() {
+	if (started) return;
+	started = true;
+	showTab(store.get("tab", "ov"));
+	try { const p = await api("../../proxies"); groups = new Set(Object.keys(p.proxies || {})); } catch (e) {}
+	renderSites();
+	testSites();
+	setInterval(() => { if ($("#auto").checked && !document.hidden) testSites(); }, 60000);
+	$("#auto").checked = store.get("auto", true);
+	$("#auto").onchange = () => store.set("auto", $("#auto").checked);
+	$("#testnow").onclick = testSites;
+	connectStream();
+	refreshRules();
+	setInterval(() => { if (!document.hidden) refreshRules(); }, 15000);
+	loadTraffic();
+	setInterval(() => { if (!document.hidden) loadTraffic(); }, 300000);
+}
+
+// ---------- 站点延迟 ----------
+function renderSites() {
+	$("#sites").innerHTML = SITES.map((s) => `
+		<div class="card site" id="site-${s.id}">
+			<div class="ic">${ICON[s.id]}</div>
+			<div class="spark"></div>
+			<div class="val"><small>${esc(s.name)}</small><span>-</span></div>
+		</div>`).join("");
+	SITES.forEach(drawSite);
+}
+
+function drawSite(s) {
+	const hist = store.get("lat." + s.id, []);
+	const el = $("#site-" + s.id);
+	const ok = hist.filter((v) => v > 0);
+	const max = Math.max(300, ...ok);
+	el.querySelector(".spark").innerHTML = hist.map((v) => {
+		const h = v > 0 ? Math.max(12, Math.round((v / max) * 100)) : 100;
+		const c = v > 0 ? (v > 800 ? "mid" : "") : "bad";
+		return `<b class="${c}" style="height:${h}%" title="${v > 0 ? v + " ms" : "超时"}"></b>`;
+	}).join("");
+	const last = hist[hist.length - 1];
+	const span = el.querySelector(".val span");
+	if (last === undefined) { span.className = ""; span.textContent = "-"; return; }
+	if (last > 0) { span.className = last > 800 ? "mid" : ""; span.innerHTML = last + "<em>ms</em>"; }
+	else { span.className = "bad"; span.textContent = "超时"; }
+}
+
+let testing = false;
+async function testSites() {
+	if (testing) return;
+	testing = true;
+	$("#testnow").disabled = true;
+	await Promise.all(SITES.map(async (s) => {
+		const via = s.via.find((g) => g === "DIRECT" || groups.has(g)) || "DIRECT";
+		let d = 0;
+		try {
+			const r = await api(`../../proxies/${encodeURIComponent(via)}/delay?url=${encodeURIComponent(s.url)}&timeout=5000`);
+			d = r.delay || 0;
+		} catch (e) { d = 0; }
+		const hist = store.get("lat." + s.id, []);
+		hist.push(d);
+		store.set("lat." + s.id, hist.slice(-24));
+		drawSite(s);
+		$("#site-" + s.id).title = "经由「" + via + "」测试 " + s.url;
+	}));
+	testing = false;
+	$("#testnow").disabled = false;
+}
+
+// ---------- 实时曲线（一条 /connections 推送就够：总量、连接、内存都有） ----------
+const SERIES = { ds: [], us: [], mem: [], conn: [] };
+const N = 90;
+let lastSnap = null;
+const seen = new Map(); // 连接 id → { host, up, down, chain }
+const hostAgg = new Map(); // 已结束连接按域名累计
+
+function wsOpen(path, onData) {
+	const base = new URL("../../", location.href);
+	const ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${base.host}${base.pathname}${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(SECRET)}`);
+	ws.onmessage = (ev) => { try { onData(JSON.parse(ev.data)); } catch (e) {} };
+	ws.onclose = () => setTimeout(() => wsOpen(path, onData), 3000);
+	return ws;
+}
+
+let memNow = 0;
+function connectStream() {
+	wsOpen("connections?interval=1000", onSnap);
+	wsOpen("memory", (m) => { if (m.inuse) memNow = m.inuse; });
+}
+
+function onSnap(s) {
+	const now = Date.now();
+	const conns = s.connections || [];
+	let ds = 0, us = 0;
+	if (lastSnap) {
+		const dt = (now - lastSnap.t) / 1000 || 1;
+		ds = Math.max(0, (s.downloadTotal - lastSnap.d) / dt);
+		us = Math.max(0, (s.uploadTotal - lastSnap.u) / dt);
+	}
+	lastSnap = { t: now, d: s.downloadTotal, u: s.uploadTotal };
+	const mem = memNow || s.memory || 0;
+	push("ds", ds); push("us", us); push("mem", mem); push("conn", conns.length);
+	$("#s-conn").textContent = conns.length;
+	$("#s-mem").textContent = mem ? fmtBytes(mem) : "-";
+	$("#s-dt").textContent = fmtBytes(s.downloadTotal);
+	$("#s-ut").textContent = fmtBytes(s.uploadTotal);
+	$("#s-ds").textContent = fmtRate(ds);
+	$("#s-us").textContent = fmtRate(us);
+	drawChart("ds", fmtRate, "var(--chart)");
+	drawChart("us", fmtRate, "var(--chart2)");
+	drawChart("mem", fmtBytes, "var(--chart3)");
+	drawChart("conn", (v) => Math.round(v), "var(--chart4)");
+	trackHosts(conns);
+	lastConns = conns;
+}
+
+function push(k, v) { SERIES[k].push(v); if (SERIES[k].length > N) SERIES[k].shift(); }
+
+function drawChart(k, fmt, color) {
+	const d = SERIES[k];
+	const max = Math.max(...d, k === "conn" ? 10 : 1024) * 1.15;
+	const W = 300, H = 110, step = W / (N - 1), off = (N - d.length) * step;
+	const pts = d.map((v, i) => [off + i * step, H - 4 - (v / max) * (H - 14)]);
+	const line = pts.map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+	const area = pts.length ? `M${pts[0][0]},${H} L${line.replace(/ /g, " L")} L${pts[pts.length - 1][0]},${H} Z` : "";
+	$("#c-" + k).innerHTML =
+		[0.25, 0.5, 0.75].map((f) => `<line x1="0" x2="${W}" y1="${H * f}" y2="${H * f}" stroke="var(--line)" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>`).join("") +
+		`<path d="${area}" fill="${color}" opacity=".15"/>` +
+		`<polyline points="${line}" fill="none" stroke="${color}" stroke-width="1.6" vector-effect="non-scaling-stroke"/>`;
+	$("#c-" + k + "-max").textContent = "峰值 " + fmt(Math.max(...d, 0));
+}
+
+// ---------- 分流统计 ----------
+const isDirect = (c) => (c.chains || [])[0] === "DIRECT";
+const hostOf = (c) => c.metadata.host || c.metadata.sniffHost || c.metadata.destinationIP;
+
+function trackHosts(conns) {
+	const live = new Set();
+	for (const c of conns) {
+		live.add(c.id);
+		seen.set(c.id, { host: hostOf(c), up: c.upload, down: c.download, direct: isDirect(c), chain: (c.chains || []).slice().reverse().join(" → ") });
+	}
+	for (const [id, v] of seen) {
+		if (live.has(id)) continue;
+		addHost(hostAgg, v);
+		seen.delete(id);
+	}
+	const all = new Map(hostAgg);
+	for (const v of seen.values()) addHost(all, v, true);
+	const top = [...all.entries()].sort((a, b) => b[1].bytes - a[1].bytes).slice(0, 8);
+	const max = top.length ? top[0][1].bytes || 1 : 1;
+	$("#hosts-rank").innerHTML = top.length ? top.map(([h, v]) => `
+		<li><div class="row"><span class="n mono">${esc(h)}</span><span class="tag ${v.direct ? "g" : ""}">${v.direct ? "直连" : "代理"}</span><span class="v">${fmtBytes(v.bytes)}</span></div>
+		<div class="meter"><i style="width:${Math.max(2, (v.bytes / max) * 100)}%"></i></div></li>`).join("") : '<li class="empty">还没有连接</li>';
+}
+
+function addHost(m, v, copy) {
+	const o = m.get(v.host) || { bytes: 0, n: 0, direct: v.direct };
+	const n = { bytes: o.bytes + v.up + v.down, n: o.n + 1, direct: v.direct };
+	m.set(v.host, copy ? n : Object.assign(o, n));
+}
+
+async function refreshRules() {
+	let r;
+	try { r = (await api("../../rules")).rules || []; } catch (e) { return; }
+	let total = 0, direct = 0, reject = 0, proxy = 0;
+	for (const x of r) {
+		const h = (x.extra && x.extra.hitCount) || 0;
+		total += h;
+		if (x.proxy === "DIRECT") direct += h;
+		else if (/^REJECT/.test(x.proxy)) reject += h;
+		else proxy += h;
+	}
+	const pct = (v) => (total ? ((v / total) * 100).toFixed(1) + "%" : "");
+	$("#f-total").textContent = total.toLocaleString();
+	$("#f-total-d").textContent = "共 " + r.length + " 条规则";
+	$("#f-proxy").textContent = proxy.toLocaleString();
+	$("#f-proxy-d").textContent = pct(proxy);
+	$("#f-direct").textContent = direct.toLocaleString();
+	$("#f-direct-d").textContent = pct(direct) + "（国内 IP 被加速层直接放行的不在内）";
+	$("#f-reject").textContent = reject.toLocaleString();
+	const top = r.filter((x) => x.extra && x.extra.hitCount).sort((a, b) => b.extra.hitCount - a.extra.hitCount).slice(0, 8);
+	const max = top.length ? top[0].extra.hitCount : 1;
+	$("#rules-rank").innerHTML = top.length ? top.map((x) => `
+		<li><div class="row"><span class="n">${esc(ruleName(x.type, x.payload))}</span><span class="tag ${x.proxy === "DIRECT" ? "g" : /^REJECT/.test(x.proxy) ? "a" : ""}">${esc(x.proxy)}</span><span class="v">${x.extra.hitCount.toLocaleString()}</span></div>
+		<div class="meter"><i style="width:${Math.max(2, (x.extra.hitCount / max) * 100)}%"></i></div></li>`).join("") : '<li class="empty">还没有命中记录</li>';
+}
+
+// 规则名翻译成人能看懂的说法
+const SET_NAMES = {
+	lb_direct: "直连域名", lb_proxy: "代理域名", lb_ai: "AI 服务", lb_claude: "Claude", lb_chatgpt: "ChatGPT", lb_gemini: "Gemini", lb_copilot: "Copilot", lb_grok: "Grok",
+	cn_site: "国内网站", cn_ip: "国内 IP", ms_youtube: "YouTube", ms_netflix: "Netflix", ms_google: "Google", ms_github: "GitHub", ms_telegram: "Telegram",
+	ms_twitter: "X / Twitter", ms_telegram_ip: "Telegram IP",
+};
+function ruleName(type, payload) {
+	if (/^RuleSet$/i.test(type)) return (SET_NAMES[payload] ? SET_NAMES[payload] + " · " : "") + payload;
+	if (/^Match$/i.test(type)) return "兜底（其他所有）";
+	if (/^AND$/i.test(type) && /443/.test(payload) && /UDP/i.test(payload)) return "QUIC（UDP 443）";
+	return type + (payload ? " " + payload : "");
+}
+
+// ---------- 流量洞察 ----------
+let traffic = new Map(); // "2026-10-07" → [上传, 下载]
+let month = "";
+
+async function loadTraffic() {
+	try {
+		const r = await fetch("traffic.txt", { cache: "no-store" });
+		if (!r.ok) throw new Error(r.status);
+		const txt = await r.text();
+		traffic = new Map();
+		for (const line of txt.split("\n")) {
+			const p = line.trim().split(/\s+/);
+			if (/^\d{4}-\d\d-\d\d$/.test(p[0])) traffic.set(p[0], [Number(p[1]) || 0, Number(p[2]) || 0]);
+		}
+	} catch (e) { traffic = new Map(); }
+	const now = new Date();
+	const cur = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+	if (!month) month = cur;
+	drawMonth();
+}
+
+function drawMonth() {
+	const ms = new Set([...traffic.keys()].map((d) => d.slice(0, 7)));
+	const now = new Date();
+	ms.add(now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0"));
+	const list = [...ms].sort();
+	const i = list.indexOf(month);
+	const label = (m) => m.slice(0, 4) + "年" + Number(m.slice(5)) + "月";
+	$("#months").innerHTML = `<button id="mprev" ${i <= 0 ? "disabled" : ""}>‹</button><button class="on">${label(month)}</button><button id="mnext" ${i >= list.length - 1 ? "disabled" : ""}>›</button>`;
+	$("#mprev").onclick = () => { month = list[i - 1]; drawMonth(); };
+	$("#mnext").onclick = () => { month = list[i + 1]; drawMonth(); };
+	const [y, m] = month.split("-").map(Number);
+	const days = new Date(y, m, 0).getDate();
+	const rows = [];
+	let up = 0, down = 0;
+	for (let d = 1; d <= days; d++) {
+		const v = traffic.get(month + "-" + String(d).padStart(2, "0")) || [0, 0];
+		rows.push(v);
+		up += v[0]; down += v[1];
+	}
+	$("#m-sum").innerHTML = `${label(month)}共 <b style="color:var(--green)">${fmtBytes(up + down)}</b>（下载 ${fmtBytes(down)}，上传 ${fmtBytes(up)}）`;
+	if (!up && !down) { $("#days").innerHTML = '<div class="empty">这个月还没有记录。装好后每 5 分钟记一次，稍等再看。</div>'; return; }
+	const W = 620, H = 160, bw = W / days, max = Math.max(...rows.map((v) => v[0] + v[1]), 1);
+	$("#days").innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">` + rows.map((v, k) => {
+		const hd = (v[1] / max) * (H - 22), hu = (v[0] / max) * (H - 22);
+		const x = k * bw + bw * 0.18, w = bw * 0.64;
+		const t = `${month}-${String(k + 1).padStart(2, "0")}  下载 ${fmtBytes(v[1])}  上传 ${fmtBytes(v[0])}`;
+		return `<g><title>${t}</title><rect x="${x}" y="${H - 14 - hd - hu}" width="${w}" height="${hd}" fill="var(--chart)" rx="1.5"/>` +
+			`<rect x="${x}" y="${H - 14 - hu}" width="${w}" height="${hu}" fill="var(--chart2)" rx="1.5"/>` +
+			((k + 1) % 5 === 1 ? `<text x="${x + w / 2}" y="${H - 2}" text-anchor="middle">${k + 1}</text>` : "") + `</g>`;
+	}).join("") + `</svg><div style="color:var(--sub);font-size:12px;margin-top:4px"><span style="color:var(--chart)">■</span> 下载　<span style="color:var(--chart2)">■</span> 上传　· 柱子上悬停看当天数字</div>`;
+}
+
+// ---------- 路由测试 ----------
+let lastConns = [];
+const QUICK = ["github.com", "youtube.com", "chatgpt.com", "google.com", "baidu.com", "bilibili.com"];
+$("#rtquick").innerHTML = QUICK.map((d) => `<button class="btn" data-d="${d}">${d}</button>`).join("");
+$("#rtquick").onclick = (e) => { const d = e.target.dataset && e.target.dataset.d; if (d) { $("#rtq").value = d; runRoute(); } };
+$("#rtform").onsubmit = (e) => { e.preventDefault(); runRoute(); };
+
+function cleanHost(s) {
+	s = s.trim().toLowerCase().replace(/^[a-z]+:\/\//, "");
+	return s.split(/[\/?#]/)[0].replace(/:\d+$/, "");
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function step(no, cls, k, t, d) {
+	return `<li><div class="no ${cls}">${no}</div><div><div class="k">${k}</div><div class="t">${t}</div>${d ? `<div class="d">${d}</div>` : ""}</div></li>`;
+}
+
+function matchConn(c, host) {
+	const m = c.metadata || {};
+	const h = (m.host || m.sniffHost || "").toLowerCase();
+	return h === host || h === "www." + host;
+}
+
+let routeBusy = false;
+async function runRoute() {
+	const host = cleanHost($("#rtq").value);
+	if (!host || routeBusy) return;
+	if (!/^[a-z0-9.-]+$/.test(host)) { alert("请输入域名，例如 github.com"); return; }
+	routeBusy = true;
+	$("#rtgo").disabled = true;
+	$("#rtres").classList.remove("hide");
+	$("#rtstate").className = "tag";
+	$("#rtstate").textContent = "测试中…";
+	$("#rtsteps").innerHTML = step(1, "", "发起访问", "本机浏览器 → https://" + esc(host) + "/", "");
+
+	// 1) 内核 DNS 的解析结果（真实 IP）
+	let ips = [], dnsErr = "";
+	try {
+		const r = await api("../../dns/query?name=" + encodeURIComponent(host) + "&type=A");
+		ips = (r.Answer || []).filter((a) => a.type === 1).map((a) => a.data);
+		if (!ips.length) dnsErr = "没有 IPv4 地址";
+	} catch (e) { dnsErr = e.message; }
+
+	// 2) 浏览器真实访问；同时盯着内核的连接表和连接日志，找到这次访问
+	const logs = [];
+	let lws = null;
+	try {
+		const base = new URL("../../", location.href);
+		lws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${base.host}${base.pathname}logs?level=info&token=${encodeURIComponent(SECRET)}`);
+		lws.onmessage = (ev) => { try { logs.push(JSON.parse(ev.data).payload || ""); } catch (e) {} };
+		lws.onclose = null;
+		await new Promise((r) => { lws.onopen = r; lws.onerror = r; setTimeout(r, 1500); });
+	} catch (e) {}
+	const t0 = Date.now();
+	const ctl = new AbortController();
+	const timer = setTimeout(() => ctl.abort(), 10000);
+	let found = null, done = false, okFetch = false, ms = 0;
+	const req = fetch("https://" + host + "/favicon.ico?litebox_probe=" + t0, { mode: "no-cors", cache: "no-store", signal: ctl.signal })
+		.then(() => { okFetch = true; }).catch(() => { okFetch = false; })
+		.finally(() => { ms = Date.now() - t0; done = true; clearTimeout(timer); });
+	const watch = (async () => {
+		while (!found) {
+			try {
+				const r = await api("../../connections");
+				found = (r.connections || []).filter((c) => matchConn(c, host)).sort((a, b) => (b.start > a.start ? 1 : -1))[0] || null;
+			} catch (e) {}
+			if (found || (done && Date.now() - t0 > 1500 + ms)) break;
+			await sleep(150);
+		}
+	})();
+	await req;
+	await watch;
+	if (!found) found = lastConns.find((c) => matchConn(c, host)) || null;
+	await sleep(300);
+	if (lws) lws.close();
+	const logLine = logs.find((l) => l.includes("> " + host + ":") || l.includes("> www." + host + ":")) || "";
+
+	// 3) 拼出整条路线
+	const out = [];
+	out.push(step(1, "", "发起访问", "本机浏览器 → https://" + esc(host) + "/", "这台设备就是一台真实的局域网终端"));
+	if (found) {
+		const m = found.metadata;
+		const fake = /fake/i.test(m.dnsMode || "") || /^198\.(1[89])\./.test(m.destinationIP || "");
+		out.push(step(2, "", "DNS 解析", fake ? "FakeIP（占位地址）" : "真实 IP",
+			fake ? "设备拿到 198.18.x.x 占位地址，由内核按域名决定线路，域名不会在本地被解析，避免 DNS 泄露" + (ips.length ? "；内核实际解析：" + esc(ips.slice(0, 3).join(", ")) : "")
+				: "解析结果：" + esc(m.destinationIP || ips.join(", "))));
+		const how = m.type === "Redir" ? "iptables 把 TCP 转给内核（加速模式）" : m.type === "Tun" ? "经 TUN 虚拟网卡进入内核" : m.type || "";
+		out.push(step(3, "", "进入内核", how, "来源 " + esc(m.sourceIP || "") + (m.sourcePort ? ":" + esc(m.sourcePort) : "") + " → " + esc(m.host || m.sniffHost || m.destinationIP) + ":" + esc(m.destinationPort)));
+		out.push(step(4, "", "命中规则", esc(ruleName(found.rule, found.rulePayload)), "规则类型 " + esc(found.rule) + (found.rulePayload ? "，内容 " + esc(found.rulePayload) : "")));
+		const chain = (found.chains || []).slice().reverse();
+		const direct = chain[chain.length - 1] === "DIRECT";
+		out.push(step(5, okFetch ? "" : "r", "最终出口", `<span class="chain">${chain.map((x) => `<span>${esc(x)}</span>`).join('<span class="ar">→</span>')}</span> <span class="tag ${direct ? "g" : ""}">${direct ? "直连" : "代理"}</span>`,
+			okFetch ? "访问成功，用时 " + ms + " ms" : "访问失败或超时（" + ms + " ms）：节点不通、网站拒绝，或被规则拦截"));
+		$("#rtstate").className = "tag " + (okFetch ? "g" : "r");
+		$("#rtstate").textContent = okFetch ? "访问成功" : "访问失败";
+	} else if (logLine) {
+		// 连接已经关掉了，用连接日志：「… --> host:443 match 规则 using 分组[节点]」
+		const rule = (logLine.match(/ match (.*) using /) || logLine.match(/\(match ([^)]*)\)/) || [])[1] || "未知";
+		const via = (logLine.match(/ using (.*)$/) || logLine.match(/dial (.*?) \(match/) || [])[1] || "未知";
+		const direct = /^DIRECT/.test(via);
+		out.push(step(2, "", "DNS 解析", ips.length ? "内核解析：" + esc(ips.slice(0, 3).join(", ")) : "由内核处理", ""));
+		out.push(step(3, "", "进入内核", "已进入内核", esc(logLine.replace(/ match .*| error:.*/, ""))));
+		const rm = rule.match(/^(\w+)[(\/](.*?)\)?$/);
+		out.push(step(4, "", "命中规则", esc(rm ? ruleName(rm[1], rm[2]) : rule), "规则 " + esc(rule)));
+		out.push(step(5, okFetch ? "" : "r", "最终出口", esc(via) + ` <span class="tag ${direct ? "g" : ""}">${direct ? "直连" : "代理"}</span>`,
+			(okFetch ? "访问成功，用时 " + ms + " ms" : "访问失败或超时（" + ms + " ms）") + (/error:/.test(logLine) ? "；内核报错：" + esc(logLine.replace(/.*error: /, "").slice(0, 160)) : "")));
+		$("#rtstate").className = "tag " + (okFetch ? "g" : "r");
+		$("#rtstate").textContent = okFetch ? "访问成功" : "访问失败";
+	} else {
+		out.push(step(2, dnsErr ? "r" : "", "DNS 解析", dnsErr ? "解析失败" : "真实 IP", dnsErr ? esc(dnsErr) : "解析结果：" + esc(ips.slice(0, 3).join(", "))));
+		if (okFetch) {
+			out.push(step(3, "", "进入内核", "没有进入内核", "这个域名解析成真实 IP，而且是国内 IP，被路由器的加速层直接放行（直连），不经过内核，最省资源"));
+			out.push(step(4, "", "最终出口", 'DIRECT <span class="tag g">直连</span>', "访问成功，用时 " + ms + " ms"));
+			$("#rtstate").className = "tag g";
+			$("#rtstate").textContent = "访问成功";
+		} else {
+			out.push(step(3, "r", "访问结果", "没有访问成功，也没有看到经过内核", dnsErr ? "域名可能不存在" : "可能是网站拒绝了这种访问，或设备没有用路由器的 DNS（比如开了「私人 DNS / 加密 DNS」）"));
+			$("#rtstate").className = "tag r";
+			$("#rtstate").textContent = "访问失败";
+		}
+	}
+	$("#rtsteps").innerHTML = out.join("");
+	routeBusy = false;
+	$("#rtgo").disabled = false;
+}
+
+boot();
+</script>
+</body>
+</html>

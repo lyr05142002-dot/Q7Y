@@ -76,7 +76,7 @@ done
 
 [ "$(id -u)" = 0 ] || die "请以 root 身份运行。"
 [ -f /etc/openwrt_release ] && [ -f /etc/rc.common ] || die "只支持 OpenWrt 系统（包括 GL.iNet 官方固件）。"
-for f in config.yaml.tpl litebox litebox.init litebox-firewall.sh; do
+for f in config.yaml.tpl litebox litebox.init litebox-firewall.sh panel.html; do
 	[ -f "$SCRIPT_DIR/files/$f" ] || die "安装包不完整，缺少 files/$f。请重新下载安装包，把整个 litebox 文件夹上传后再运行。"
 done
 
@@ -396,6 +396,10 @@ tr -d '\r' < "$SCRIPT_DIR/files/litebox" > /usr/bin/litebox
 tr -d '\r' < "$SCRIPT_DIR/files/litebox.init" > /etc/init.d/litebox
 tr -d '\r' < "$SCRIPT_DIR/files/litebox-firewall.sh" > "$BIN_DIR/firewall.sh"
 chmod 755 /usr/bin/litebox /etc/init.d/litebox "$BIN_DIR/firewall.sh"
+# 概览 / 路由测试页：原件放在程序目录，面板目录被「更新面板」清掉时 litebox 会补回去
+cp "$SCRIPT_DIR/files/panel.html" "$BIN_DIR/panel.html"
+rm -f "$HOME_DIR/ui/litebox/index.html"
+/usr/bin/litebox panel-sync
 
 # 局域网流量要能转发进 tun 网卡；fw3 / fw4 都认这套 uci 配置
 uci -q delete firewall.litebox_zone
@@ -457,6 +461,7 @@ cat <<EOF
 
   一键登录：http://$LAN_IP:$PANEL_PORT/ui/#/setup?hostname=$LAN_IP&port=$PANEL_PORT&secret=$SECRET
   （复制到浏览器打开即可。手动登录时：主机 $LAN_IP，端口 $PANEL_PORT，密码 $SECRET）
+  概览和路由测试：http://$LAN_IP:$PANEL_PORT/ui/litebox/#secret=$SECRET
 
-  常用命令：litebox status | litebox doctor | litebox mem | litebox sub <地址> | litebox panel | litebox direct
+  常用命令：litebox status | litebox doctor | litebox mem | litebox sub <地址> | litebox route <域名> | litebox panel | litebox direct
 EOF

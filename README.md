@@ -15,7 +15,7 @@
 
 ![网页面板：代理分组](docs/img/10-panel-proxies.png)
 
-<p align="center"><sub>路由器网页面板（zashboard）。截图来自云端测试环境，节点是演示数据</sub></p>
+<p align="center"><sub>路由器网页面板（zashboard），每个分组都带图标。截图来自云端测试环境，节点是演示数据</sub></p>
 
 ## 特点
 
@@ -24,6 +24,7 @@
 - **国内流量不进内核**：国内网站直接从 WAN 出去，不占代理的 CPU，还能用上路由器的硬件加速；境外 TCP 走 iptables 转发，比 TUN 省约 70% CPU
 - **省内存**：只有一个 mihomo 进程，常驻约 50MB，大流量下也不涨；超过上限自动重启
 - **分流规则现成的**：用[视频作者](https://youtu.be/G_7AmjfSRQ8)的[域名集](https://github.com/liandu2024/clash/tree/main/list)，每天自动更新；ChatGPT / Claude / Gemini / Grok 等走单独的 🤖 AI 分组
+- **概览和路由测试页**：四个站点的延迟走势、连接 / 内存 / 流量实时曲线、规则命中统计、按月流量；输入域名就能看它实际走哪条线路、DNS 怎么解析、命中哪条规则
 - **手机版**：安卓、iPhone 用同一套规则，出门在外也一样分流
 - **出问题能自救**：`litebox doctor` 一键自检、`litebox direct` 一键恢复直连；内核起不来时看门狗自动恢复 DNS，不会全家断网
 - **下载安全**：内核和面板锁定版本、校验 SHA256；每次发布前自动在 OpenWrt 21.02 里完整装一遍测试
@@ -54,7 +55,7 @@
 | 手机版 | 安卓配置启动后 2 秒下载好全部规则，分流结果同上，内存 48MB |
 | 稳定性 | 崩溃自动拉起、看门狗自愈、升级保留配置、重启自启、卸载还原，全部通过 |
 
-测试机是 x86_64，**还没在 GL-MT3600BE 真机上测过**。真机的 4 核 A53 单核比测试机慢不少：处理 100MB 流量测试机约用 1 秒 CPU，按此粗估，跑满百兆宽带约占 4 个核里的 1 个，日常上网、看视频负载很轻。装好后用 `litebox mem`、`top` 看实际情况。
+测试机是 x86_64。v0.4.0 已在 GL-MT3600BE 真机（OpenWrt 21.02 第三方固件）上运行：加速层生效，内核内存 43MB，换下 OpenClash 后系统可用内存从 68MB 增加到 135MB。真机的 4 核 A53 单核比测试机慢不少：处理 100MB 流量测试机约用 1 秒 CPU，按此粗估，跑满百兆宽带约占 4 个核里的 1 个，日常上网、看视频负载很轻。装好后用 `litebox mem`、`top` 看实际情况。
 
 ## 和 OpenClash 比
 
@@ -179,6 +180,23 @@ curl -fsSL https://raw.githubusercontent.com/lyr05142002-dot/Q7Y/main/get.sh | s
 
 ![面板里的四个分组](docs/img/05-groups.png)
 
+### 概览和路由测试
+
+安装完还会显示一个**概览和路由测试**链接（`litebox panel` 也能看到），形如 `http://192.168.8.1:9090/ui/litebox/#secret=面板密码`。面板顶部的「节点 · 连接」可以跳回 zashboard。
+
+- **概览**：百度 / Google / OpenAI / GitHub 的延迟和最近 24 次走势（分别经直连、🚀、🤖 AI、🚀 测，和平时访问走同一条线）；连接数、内存、上下行速率的实时曲线；规则命中排行和代理 / 直连占比；按月、按天的流量
+- **路由测试**：输入域名，浏览器真实访问一次，页面从内核记录里找出这次访问的 DNS 方式、进入内核的方式、命中的规则和完整线路。正在看页面的这台手机或电脑本身就是局域网终端，所以不用另外模拟设备
+
+![路由测试](docs/img/13-route-test.png)
+
+<details><summary>概览页截图（测试环境只放行了 GitHub，所以另外三个站点显示超时）</summary>
+
+![概览](docs/img/14-overview.png)
+
+</details>
+
+流量记录说明：看门狗每 5 分钟记一次经过内核的流量，平时写在内存里、每小时存回闪存一次。开着流量加速时国内 IP 不进内核，不计入。
+
 ### 装好后自检、出问题怎么办
 
 在路由器上运行 `litebox doctor`，它会逐项检查，每个失败项下面都写了怎么处理：
@@ -274,7 +292,8 @@ YouTube、Netflix、Google、GitHub、Telegram、Twitter 的规则来自 [MetaCu
 | `litebox doctor` | **出问题时先跑这个**：一键自检并给出处理建议 |
 | `litebox mem` | 详细内存信息 |
 | `litebox sub '地址'` | 更换订阅（不带地址 = 查看当前订阅） |
-| `litebox panel` | 显示面板的一键登录链接和密码 |
+| `litebox panel` | 显示面板的一键登录链接、密码和概览页链接 |
+| `litebox route 域名` | 路由器自己访问一次，看 DNS、命中的规则和线路 |
 | `litebox restart` / `stop` / `start` | 重启 / 停止 / 启动 |
 | `litebox log` | 最近的内核日志 |
 | `litebox direct` | **上不了网时用**：立即恢复直连并关闭开机自启 |
@@ -310,7 +329,7 @@ YouTube、Netflix、Google、GitHub、Telegram、Twitter 的规则来自 [MetaCu
 - 路由器自己发出的流量（比如 `litebox update`）仍全部经过内核，不影响局域网设备
 - 访客网络（guest）默认不走代理
 - 设备自己设置的 DoH（比如浏览器的「安全 DNS」）会绕过路由器 DNS，按 IP 分流时可能不准，建议关掉
-- 按 GL 固件的 OpenWrt 21.02 设计，在云端的 OpenWrt 21.02.7 上完整测试过，**还没在 GL-MT3600BE 真机上验证**。第一次安装时建议留一根网线，出问题就执行 `litebox direct`
+- 按 GL 固件的 OpenWrt 21.02 设计，在云端的 OpenWrt 21.02.7 上完整测试过，v0.4.0 起已在一台 GL-MT3600BE 上实际运行。第一次安装时建议留一根网线，出问题就执行 `litebox direct`
 
 ## 许可证
 

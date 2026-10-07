@@ -54,6 +54,23 @@
 
 测试机是 x86_64，**还没在 GL-MT3600BE 真机上测过**。真机的 4 核 A53 单核比测试机慢不少：处理 100MB 流量测试机约用 1 秒 CPU，按此粗估，跑满百兆宽带约占 4 个核里的 1 个，日常上网、看视频负载很轻。装好后用 `litebox mem`、`top` 看实际情况。
 
+## 和 OpenClash 比
+
+在云端用同一个 mihomo 内核（v1.19.31）、同一份订阅和分流规则，把 LiteBox 和最新的 OpenClash（v0.47.156，默认 fake-ip 模式）各装一台测试路由器，依次测同样的项目：
+
+| 项目 | LiteBox | OpenClash | 说明 |
+|---|---|---|---|
+| 内存（空闲 / 压测后） | 47–50MB | 46–49MB | 同一个内核，几乎一样 |
+| 新域名 DNS 解析 | **0.8ms** | 24ms | OpenClash 默认把每个 fake-ip 映射写进闪存（`store-fake-ip`），LiteBox 关掉了：把 LiteBox 也打开后同样变成 23ms |
+| 打开网页首字节 | 129ms | 123ms | 一样 |
+| 下载速度 | 44MB/s | 43–48MB/s | 一样（瓶颈在测试节点） |
+| 每 21MB 下载的内核 CPU | 200–250ms | **100–160ms** | OpenClash 用 iptables 转发 TCP，比 LiteBox 的 TUN 省 40% 左右 CPU；OpenClash 切到 TUN 模式后是 240–290ms |
+| 重启到恢复代理 | **6–7 秒** | 9–10 秒 | |
+| 占用存储（不含内核） | **约 6MB** | 约 25MB，另需 Ruby、bash、dnsmasq-full 等依赖 | |
+| 功能 | 够用：分组、分流、面板、自检 | **多得多**：订阅转换、覆写、多种代理模式、LuCI 页面里改各种设置 | |
+
+简单说：**跑起来一样快、内存一样多**；LiteBox 的 DNS 更快、更省存储、装和管更简单，OpenClash 功能更全、转发更省 CPU。已经在用 OpenClash 而且满意的，没必要换；想要轻量、省心，或者 OpenClash 装不上的，用 LiteBox。
+
 ## 下载
 
 到 [Releases 页面](https://github.com/lyr05142002-dot/Q7Y/releases/latest) 下载，或直接点：

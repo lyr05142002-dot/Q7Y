@@ -12,7 +12,7 @@ unified-delay: true
 tcp-concurrent: false
 
 # 以下几项是为了省内存：不查进程、不加载 GeoIP/GeoSite 数据库、不把 fake-ip 映射反复写进闪存
-find-process-mode: off
+find-process-mode: 'off'
 geodata-mode: false
 geo-auto-update: false
 profile:

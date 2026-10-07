@@ -12,7 +12,7 @@ log-level: warning
 ipv6: false
 unified-delay: true
 tcp-concurrent: false
-find-process-mode: off
+find-process-mode: 'off'
 geodata-mode: false
 geo-auto-update: false
 profile:

@@ -108,6 +108,26 @@ section.box { background: var(--card); border: 1px solid var(--line); border-rad
 .chain .ar { color: var(--sub); }
 .tip { background: var(--bg); border-radius: 10px; padding: 10px 12px; color: var(--sub); font-size: 12.5px; margin-top: 12px; }
 .hide { display: none !important; }
+.seg { display: inline-flex; background: var(--bg); border-radius: 9px; padding: 3px; gap: 2px; }
+.seg button { border: 0; background: none; color: var(--sub); font: inherit; padding: 3px 12px; border-radius: 7px; cursor: pointer; }
+.seg button.on { background: var(--card); color: var(--text); font-weight: 700; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.stab-sum { color: var(--sub); font-size: 13px; margin-bottom: 12px; line-height: 1.8; }
+.stab-sum b { color: var(--text); }
+.nodes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+@media (max-width: 760px) { .nodes { grid-template-columns: 1fr; } }
+.node { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
+.node.cur { border-color: var(--green); background: var(--green-bg); }
+.node .nm { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node .nv { color: var(--sub); font-size: 12.5px; grid-column: 1 / -1; }
+.node .nv b { color: var(--text); }
+.node .btn { padding: 2px 10px; font-size: 12.5px; }
+.dots { display: flex; gap: 3px; flex-wrap: wrap; grid-column: 1 / -1; }
+.dots i { width: 11px; height: 11px; border-radius: 50%; background: var(--green); display: inline-block; }
+.dots i.mid { background: var(--amber); }
+.dots i.bad { background: var(--red); }
+.dots i.none { background: var(--line); }
+.site.pick { cursor: pointer; }
+.site.pick.on { border-color: var(--green); }
 section.box.sub { border: 2px solid var(--green); }
 section.box.sub.bad { border-color: var(--red); }
 .sub .row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
@@ -180,6 +200,19 @@ section.box.sub.bad { border-color: var(--red); }
 			</div>
 		</section>
 
+		<section class="box" id="stab">
+			<div class="hd">
+				<h2>节点稳定性</h2>
+				<div class="seg" id="stab-tabs"></div>
+				<label class="sw"><input type="checkbox" id="stab-auto" checked>页面开着时每 10 分钟测一次</label>
+				<div class="grow"></div>
+				<button class="btn" id="stab-test">测试全部节点</button>
+			</div>
+			<div class="stab-sum" id="stab-sum">读取中…</div>
+			<div class="nodes" id="stab-list"></div>
+			<div class="tip" id="stab-tip"></div>
+		</section>
+
 		<section class="box">
 			<div class="hd">
 				<h2>分流统计</h2>
@@ -236,11 +269,11 @@ const store = {
 	set(k, v) { try { localStorage.setItem("litebox." + k, JSON.stringify(v)); } catch (e) {} },
 };
 
-// 图标（Simple Icons，CC0）和分组用的简单图形
+// 图标：Simple Icons（CC0）；Claude 来自 LobeHub lobe-icons（MIT）
 const ICON = {
 	baidu: '<svg viewBox="0 0 24 24"><path fill="#2932e1" d="M9.154 0C7.71 0 6.54 1.658 6.54 3.707c0 2.051 1.171 3.71 2.615 3.71 1.446 0 2.614-1.659 2.614-3.71C11.768 1.658 10.6 0 9.154 0zm7.025.594C14.86.58 13.347 2.589 13.2 3.927c-.187 1.745.25 3.487 2.179 3.735 1.933.25 3.175-1.806 3.422-3.364.252-1.555-.995-3.364-2.362-3.674a1.218 1.218 0 0 0-.261-.03zM3.582 5.535a2.811 2.811 0 0 0-.156.008c-2.118.19-2.428 3.24-2.428 3.24-.287 1.41.686 4.425 3.297 3.864 2.617-.561 2.262-3.68 2.183-4.362-.125-1.018-1.292-2.773-2.896-2.75zm16.534 1.753c-2.308 0-2.617 2.119-2.617 3.616 0 1.43.121 3.425 2.988 3.362 2.867-.063 2.553-3.238 2.553-3.988 0-.745-.62-2.99-2.924-2.99zm-8.264 2.478c-1.424.014-2.708.925-3.323 1.947-1.118 1.868-2.863 3.05-3.112 3.363-.25.309-3.61 2.116-2.864 5.42.746 3.301 3.365 3.237 3.365 3.237s1.93.19 4.171-.31c2.24-.495 4.17.123 4.17.123s5.233 1.748 6.665-1.616c1.43-3.364-.808-5.109-.808-5.109s-2.99-2.306-4.736-4.798c-1.072-1.665-2.348-2.268-3.528-2.257zm-2.234 3.84l1.542.024v8.197H7.758c-1.47-.291-2.055-1.292-2.13-1.462-.072-.173-.488-.976-.268-2.343.635-2.049 2.447-2.196 2.447-2.196h1.81zm3.964 2.39v3.881c.096.413.612.488.612.488h1.614v-4.343h1.689v5.782h-3.915c-1.517-.39-1.59-1.465-1.59-1.465v-4.317zm-5.458 1.147c-.66.197-.978.708-1.05.928-.076.22-.247.78-.1 1.269.294 1.095 1.248 1.144 1.248 1.144h1.37v-3.34z"/></svg>',
 	google: '<svg viewBox="0 0 24 24"><path fill="#4285f4" d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/></svg>',
-	ai: '<svg viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z"/></svg>',
+	claude: '<svg viewBox="0 0 24 24"><path fill="#d97757" d="M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z"/></svg>',
 	github: '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>',
 	youtube: '<svg viewBox="0 0 24 24"><path fill="#ff0000" d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>',
 };
@@ -249,7 +282,7 @@ const ICON = {
 const SITES = [
 	{ id: "baidu", name: "百度", url: "https://www.baidu.com", via: ["DIRECT"] },
 	{ id: "google", name: "Google", url: "https://www.google.com/generate_204", via: ["Google", "🚀 节点选择", "GLOBAL"] },
-	{ id: "ai", name: "OpenAI", url: "https://chatgpt.com/favicon.ico", via: ["ChatGPT", "🤖 AI", "🚀 节点选择", "GLOBAL"] },
+	{ id: "claude", name: "Claude", url: "https://claude.ai", via: ["Claude", "🤖 AI", "🚀 节点选择", "GLOBAL"] },
 	{ id: "github", name: "GitHub", url: "https://github.com", via: ["GitHub", "🚀 节点选择", "GLOBAL"] },
 ];
 
@@ -330,6 +363,7 @@ async function start() {
 	setInterval(() => { if (!document.hidden) loadTraffic(); }, 300000);
 	loadSub();
 	setInterval(() => { if (!document.hidden) loadSub(); }, 60000);
+	stabInit();
 	$("#sub-update").onclick = async () => {
 		$("#sub-update").disabled = true;
 		$("#sub-state").textContent = "正在更新…";
@@ -373,12 +407,13 @@ async function loadSub() {
 // ---------- 站点延迟 ----------
 function renderSites() {
 	$("#sites").innerHTML = SITES.map((s) => `
-		<div class="card site" id="site-${s.id}">
+		<div class="card site${STAB[s.id] ? " pick" : ""}" id="site-${s.id}"${STAB[s.id] ? ` title="点一下看每个节点访问 ${esc(s.name)} 的稳定性"` : ""}>
 			<div class="ic">${ICON[s.id]}</div>
 			<div class="spark"></div>
 			<div class="val"><small>${esc(s.name)}</small><span>-</span></div>
 		</div>`).join("");
 	SITES.forEach(drawSite);
+	SITES.forEach((s) => { if (STAB[s.id]) $("#site-" + s.id).onclick = () => { stabTab(s.id); $("#stab").scrollIntoView({ behavior: "smooth" }); }; });
 }
 
 function drawSite(s) {
@@ -418,6 +453,141 @@ async function testSites() {
 	}));
 	testing = false;
 	$("#testnow").disabled = false;
+}
+
+// ---------- 节点稳定性：每个节点访问某个网站的成功率和延迟 ----------
+// 用内核的分组测速接口让分组里每个节点各访问一次（只取响应头）；内核按网址给每个节点记最近 10 次结果，
+// 换设备打开也看得到。这台浏览器再多存一些（每个节点最多 30 次），看得更长
+const STAB = {
+	claude: { name: "Claude", url: "https://claude.ai", via: ["Claude", "🤖 AI", "🚀 节点选择", "GLOBAL"] },
+	google: { name: "Google", url: "https://www.google.com/generate_204", via: ["Google", "🚀 节点选择", "GLOBAL"] },
+	github: { name: "GitHub", url: "https://github.com", via: ["GitHub", "🚀 节点选择", "GLOBAL"] },
+};
+const STAB_EVERY = 10 * 60 * 1000;
+let stabCur = "claude", stabBusy = false;
+
+function stabInit() {
+	stabCur = STAB[store.get("stab.tab", "claude")] ? store.get("stab.tab", "claude") : "claude";
+	$("#stab-tabs").innerHTML = Object.entries(STAB).map(([id, t]) => `<button data-id="${id}">${esc(t.name)}</button>`).join("");
+	$("#stab-tabs").onclick = (e) => { const id = e.target.dataset && e.target.dataset.id; if (id) stabTab(id); };
+	$("#stab-auto").checked = store.get("stab.auto", true);
+	$("#stab-auto").onchange = () => store.set("stab.auto", $("#stab-auto").checked);
+	$("#stab-test").onclick = () => stabTest();
+	$("#stab-list").onclick = async (e) => {
+		const name = e.target.dataset && e.target.dataset.use;
+		if (!name) return;
+		e.target.disabled = true;
+		try { await api(`../../proxies/${encodeURIComponent(stabGroup())}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }); }
+		catch (err) { alert("切换失败：" + err.message); }
+		stabLoad();
+	};
+	stabTab(stabCur);
+	setInterval(() => { if ($("#stab-auto").checked && !document.hidden) stabMaybeTest(); }, 60000);
+}
+
+function stabGroup() { return STAB[stabCur].via.find((g) => groups.has(g)) || "GLOBAL"; }
+
+async function stabTab(id) {
+	stabCur = id;
+	store.set("stab.tab", id);
+	document.querySelectorAll("#stab-tabs button").forEach((b) => b.classList.toggle("on", b.dataset.id === id));
+	SITES.forEach((s) => { const el = $("#site-" + s.id); if (el) el.classList.toggle("on", s.id === id); });
+	const t = STAB[id];
+	$("#stab-tip").innerHTML = `每次测试让「${esc(stabGroup())}」分组里的每个节点各访问一次 <span class="mono">${esc(t.url)}</span>，只取响应头，每个节点几 KB 流量。` +
+		"点「用这个」会把这个分组直接切到那个节点（不再跟随上级分组，想恢复在面板里选回去）。" +
+		"绿色正常，黄色慢（超过 1 秒），红色失败，灰色还没测。";
+	await stabLoad();
+	if ($("#stab-auto").checked) stabMaybeTest();
+}
+
+// 合并内核里的记录和本机存的记录，返回 { 节点名: [[时间毫秒, 延迟], ...] }
+function stabMerge(nodes) {
+	const key = "stab." + stabCur, url = STAB[stabCur].url;
+	const saved = store.get(key, {});
+	const out = {};
+	for (const n of nodes) {
+		const list = (saved[n.name] || []).slice();
+		const have = new Set(list.map((x) => x[0]));
+		const h = (n.extra && n.extra[url] && n.extra[url].history) || [];
+		for (const x of h) {
+			const t = Date.parse(x.time);
+			if (t && !have.has(t)) list.push([t, x.delay || 0]);
+		}
+		list.sort((a, b) => a[0] - b[0]);
+		out[n.name] = list.slice(-30);
+	}
+	store.set(key, out);
+	return out;
+}
+
+let stabLast = 0;
+async function stabLoad() {
+	let p, all;
+	try { [p, all] = await Promise.all([api("../../providers/proxies/sub"), api("../../proxies")]); }
+	catch (e) { $("#stab-sum").textContent = "读取节点失败：" + e.message; return; }
+	const nodes = p.proxies || [];
+	const data = stabMerge(nodes);
+	const prox = all.proxies || {};
+	groups = new Set(Object.keys(prox));
+	// 分组现在实际用的节点（分组套分组时一路找下去）
+	const group = stabGroup();
+	let cur = group, guard = 0;
+	while (prox[cur] && prox[cur].now && guard++ < 8) cur = prox[cur].now;
+	stabLast = 0;
+	const rows = nodes.map((n) => {
+		const h = data[n.name] || [];
+		const ok = h.filter((x) => x[1] > 0);
+		if (h.length) stabLast = Math.max(stabLast, h[h.length - 1][0]);
+		return {
+			name: n.name, h,
+			rate: h.length ? ok.length / h.length : -1,
+			avg: ok.length ? Math.round(ok.reduce((a, x) => a + x[1], 0) / ok.length) : 0,
+			last: h.length ? h[h.length - 1][1] : null,
+		};
+	});
+	rows.sort((a, b) => (b.rate - a.rate) || ((a.avg || 1e9) - (b.avg || 1e9)) || a.name.localeCompare(b.name));
+	const pct = (r) => (r < 0 ? "-" : Math.round(r * 100) + "%");
+	const tested = rows.filter((r) => r.rate >= 0);
+	const okNow = rows.filter((r) => r.last > 0).length;
+	const curRow = rows.find((r) => r.name === cur);
+	const best = tested.find((r) => r.rate > 0);
+	const t = STAB[stabCur];
+	let sum = `共 <b>${rows.length}</b> 个节点`;
+	if (tested.length) sum += `，最近一次 <b>${okNow}</b> 个能打开 ${esc(t.name)}`;
+	if (stabLast) sum += `（${new Date(stabLast).toLocaleTimeString("zh-CN", { hour12: false })} 测的）`;
+	sum += `。<br>${esc(t.name)} 现在走：<b>${esc(cur)}</b>`;
+	if (curRow && curRow.rate >= 0) sum += `（成功率 ${pct(curRow.rate)}，平均 ${curRow.avg || "-"} ms）`;
+	if (best && best.name !== cur) sum += `；最稳的是 <b>${esc(best.name)}</b>（${pct(best.rate)}，平均 ${best.avg} ms）`;
+	if (!tested.length) sum += "。还没测过，点右上角「测试全部节点」。";
+	$("#stab-sum").innerHTML = sum;
+	$("#stab-list").innerHTML = rows.map((r) => {
+		const dots = r.h.slice(-20).map((x) => `<i class="${x[1] > 0 ? (x[1] > 1000 ? "mid" : "") : "bad"}" title="${new Date(x[0]).toLocaleString("zh-CN", { hour12: false })}  ${x[1] > 0 ? x[1] + " ms" : "失败"}"></i>`).join("") ||
+			'<i class="none"></i>'.repeat(10);
+		const isCur = r.name === cur;
+		return `<div class="node${isCur ? " cur" : ""}">
+			<div class="nm">${esc(r.name)}${isCur ? ' <span class="tag g">当前</span>' : ""}</div>
+			${isCur ? "<span></span>" : `<button class="btn" data-use="${esc(r.name)}">用这个</button>`}
+			<div class="dots">${dots}</div>
+			<div class="nv">成功率 <b>${pct(r.rate)}</b>（${r.h.filter((x) => x[1] > 0).length}/${r.h.length} 次） · 平均 <b>${r.avg ? r.avg + " ms" : "-"}</b> · 最近 ${r.last === null ? "-" : r.last > 0 ? r.last + " ms" : '<span style="color:var(--red)">失败</span>'}</div>
+		</div>`;
+	}).join("") || '<div class="empty">订阅里还没有节点</div>';
+}
+
+function stabMaybeTest() { if (Date.now() - stabLast > STAB_EVERY) stabTest(); }
+
+async function stabTest() {
+	if (stabBusy) return;
+	stabBusy = true;
+	const btn = $("#stab-test");
+	btn.disabled = true;
+	btn.textContent = "测试中…";
+	const t = STAB[stabCur];
+	try { await api(`../../group/${encodeURIComponent(stabGroup())}/delay?url=${encodeURIComponent(t.url)}&timeout=5000`); }
+	catch (e) { /* 全部失败时接口返回错误，结果照样记在每个节点上 */ }
+	await stabLoad();
+	btn.disabled = false;
+	btn.textContent = "测试全部节点";
+	stabBusy = false;
 }
 
 // ---------- 实时曲线（一条 /connections 推送就够：总量、连接、内存都有） ----------

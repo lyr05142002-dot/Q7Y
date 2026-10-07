@@ -85,6 +85,12 @@ dns:
     - RULE-SET,lb_gemini,fake-ip
     - RULE-SET,lb_copilot,fake-ip
     - RULE-SET,lb_grok,fake-ip
+    - RULE-SET,ms_youtube,fake-ip
+    - RULE-SET,ms_netflix,fake-ip
+    - RULE-SET,ms_google,fake-ip
+    - RULE-SET,ms_github,fake-ip
+    - RULE-SET,ms_telegram,fake-ip
+    - RULE-SET,ms_twitter,fake-ip
     - RULE-SET,lb_proxy,fake-ip
     - RULE-SET,cn_site,real-ip
     - MATCH,fake-ip
@@ -132,6 +138,13 @@ proxy-groups:
     tolerance: 50
     lazy: true
   - name: 🤖 AI
+    type: select
+    proxies:
+      - 🚀 节点选择
+      - ♻️ 自动选择
+    use:
+      - sub
+  - name: 📺 流媒体
     type: select
     proxies:
       - 🚀 节点选择
@@ -212,6 +225,63 @@ rule-providers:
     path: ./rules/lb_proxy.list
     interval: 86400
     proxy: 🚀 节点选择
+  # 常用境外服务，来自 MetaCubeX/meta-rules-dat
+  ms_youtube:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/youtube.mrs
+    path: ./rules/ms_youtube.mrs
+    interval: 86400
+    proxy: 🚀 节点选择
+  ms_netflix:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/netflix.mrs
+    path: ./rules/ms_netflix.mrs
+    interval: 86400
+    proxy: 🚀 节点选择
+  ms_google:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/google.mrs
+    path: ./rules/ms_google.mrs
+    interval: 86400
+    proxy: 🚀 节点选择
+  ms_github:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/github.mrs
+    path: ./rules/ms_github.mrs
+    interval: 86400
+    proxy: 🚀 节点选择
+  ms_telegram:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/telegram.mrs
+    path: ./rules/ms_telegram.mrs
+    interval: 86400
+    proxy: 🚀 节点选择
+  ms_telegram_ip:
+    type: http
+    behavior: ipcidr
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/telegram.mrs
+    path: ./rules/ms_telegram_ip.mrs
+    interval: 86400
+    proxy: 🚀 节点选择
+  ms_twitter:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/twitter.mrs
+    path: ./rules/ms_twitter.mrs
+    interval: 86400
+    proxy: 🚀 节点选择
   cn_site:
     type: http
     behavior: domain
@@ -245,6 +315,13 @@ rules:
   - RULE-SET,lb_gemini,🤖 AI
   - RULE-SET,lb_copilot,🤖 AI
   - RULE-SET,lb_grok,🤖 AI
+  - RULE-SET,ms_youtube,📺 流媒体
+  - RULE-SET,ms_netflix,📺 流媒体
+  - RULE-SET,ms_google,🚀 节点选择
+  - RULE-SET,ms_github,🚀 节点选择
+  - RULE-SET,ms_telegram,🚀 节点选择
+  - RULE-SET,ms_twitter,🚀 节点选择
+  - RULE-SET,ms_telegram_ip,🚀 节点选择,no-resolve
   - RULE-SET,lb_proxy,🚀 节点选择
   - RULE-SET,cn_site,DIRECT
   # no-resolve：有域名的连接只按域名判断，不为了匹配 IP 段去解析每个境外域名（更快，也不会把境外域名发给国内 DNS）

@@ -273,14 +273,16 @@ cmd_doctor() {
 			d_hint "订阅可能过期或下载失败：在浏览器打开订阅地址确认，再 litebox sub '订阅地址' 重新拉取"
 		fi
 	fi
-	n=0
-	for f in "$HOME_DIR"/rules/*; do
-		[ -s "$f" ] && n=$((n + 1))
+	# 按配置里实际引用的规则文件数检查
+	n=0 total=0
+	for f in $(sed -n 's#^    path: \./\(rules/[^ ]*\)$#\1#p' "$CONFIG"); do
+		total=$((total + 1))
+		[ -s "$HOME_DIR/$f" ] && n=$((n + 1))
 	done
-	if [ "$n" -ge 10 ]; then
+	if [ "$n" -ge "$total" ]; then
 		d_ok "分流规则 $n 个文件"
 	else
-		d_warn "分流规则只有 $n/10 个文件，缺的会在内核启动后经代理自动下载"
+		d_warn "分流规则只有 $n/$total 个文件，缺的会在内核启动后经代理自动下载"
 	fi
 
 	echo
@@ -358,8 +360,8 @@ cmd_doctor() {
 		d_hint "关掉路由器上不用的插件（AdGuard Home 等）"
 	fi
 	for svc in openclash nikki mihomo passwall passwall2 shadowsocksr sing-box openbox homeproxy; do
-		if [ -x "/etc/init.d/$svc" ] && "/etc/init.d/$svc" running >/dev/null 2>&1; then
-			d_bad "$svc 也在运行，两套代理会互相冲突"
+		if svc_active "$svc"; then
+			d_bad "$svc $SVC_STATE，和 LiteBox 会互相冲突"
 			d_hint "/etc/init.d/$svc stop && /etc/init.d/$svc disable"
 		fi
 	done
@@ -388,6 +390,18 @@ cmd_doctor() {
 		echo "上不了网时先执行 litebox direct 恢复直连。求助时把以上输出整段发出去即可（不含订阅地址和面板密码）。"
 		return 1
 	fi
+}
+
+# 其他代理插件是否真的在工作。不信插件脚本自己的 running：有些固件里 passwall、shadowsocksr
+# 的 running 没有进程也返回「在运行」。只看开机自启、procd 里的实例、以及插件自己目录下的进程
+svc_active() { # 插件名
+	[ -x "/etc/init.d/$1" ] || return 1
+	if "/etc/init.d/$1" enabled 2>/dev/null; then SVC_STATE="开着开机自启"; return 0; fi
+	if ubus call service list "{\"name\":\"$1\"}" 2>/dev/null | jsonfilter -e "@[\"$1\"].instances.*.pid" >/dev/null 2>&1; then
+		SVC_STATE="正在运行"; return 0
+	fi
+	if ps w 2>/dev/null | grep -v grep | grep -q "/etc/$1[/ ]"; then SVC_STATE="正在运行"; return 0; fi
+	return 1
 }
 
 # 防火墙加速层的状态（litebox-firewall.sh 写在 $FW_STATE）

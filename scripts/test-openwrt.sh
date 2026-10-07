@@ -168,6 +168,18 @@ uci set openclash.sub1=config_subscribe; uci set openclash.sub1.address="http://
 	sleep 1
 	check "switch-back 后 OpenClash 恢复运行和自启" x '/etc/init.d/openclash running && /etc/init.d/openclash enabled'
 	check "switch-back 后 LiteBox 停止且不自启" x '! pidof mihomo && ! /etc/init.d/litebox enabled'
+	# 有些固件里插件脚本的 running 不管有没有进程都说「在运行」：停用后 doctor 不应误报冲突
+	x 'cat > /etc/init.d/passwall <<"EOF"
+#!/bin/sh /etc/rc.common
+START=99
+running() { return 0; }
+start() { :; }
+stop() { :; }
+EOF
+chmod 755 /etc/init.d/passwall; /etc/init.d/passwall disable; /etc/init.d/openclash stop; /etc/init.d/openclash disable; /etc/init.d/litebox enable; litebox start >/dev/null 2>&1; sleep 6' || true
+	check "running 乱报的插件停用后，doctor 不误报冲突" x '! litebox doctor | grep -q "passwall.*冲突"'
+	x '/etc/init.d/passwall enable' || true
+	check "插件开着开机自启时，doctor 提示冲突" x 'litebox doctor | grep -q "passwall 开着开机自启"'
 	docker rm -f "$c" >/dev/null
 }
 

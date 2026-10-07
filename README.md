@@ -105,7 +105,7 @@ Open-Box 的面板和 App 是闭源的，没法改，所以 LiteBox 全部用开
 |---|---|---|
 | [mihomo](https://github.com/MetaCubeX/mihomo) v1.19.31 | 代理内核：订阅、分组、分流、DNS、tun 透明代理 | 官方 Release，SHA256 写死在 `install.sh` 里校验 |
 | [zashboard](https://github.com/Zephyruso/zashboard) v3.29.1 | 网页面板（无字体版，约 2.7MB），由内核直接提供，不另起进程 | 官方 Release，同样校验 SHA256 |
-| 分流规则 | AI / 直连 / 代理域名集 + 国内域名和 IP 段 | [liandu2024/clash](https://github.com/liandu2024/clash/tree/main/list)、[MetaCubeX/meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) |
+| 分流规则 | AI / 直连 / 代理域名集 + YouTube、Google 等常用服务 + 国内域名和 IP 段 | [liandu2024/clash](https://github.com/liandu2024/clash/tree/main/list)、[MetaCubeX/meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) |
 
 Open-Box 有些做法很实用，LiteBox 用自己的方式实现了：
 
@@ -255,9 +255,12 @@ sh /tmp/litebox/install.sh
 | 🚀 节点选择 | 默认代理出口：可选「♻️ 自动选择」、直连或任意节点 |
 | ♻️ 自动选择 | 每 10 分钟测一次速，自动选延迟最低的节点 |
 | 🤖 AI | ChatGPT / Claude / Gemini / Copilot / Grok 等单独选节点（AI 服务通常要固定地区） |
+| 📺 流媒体 | YouTube、Netflix 单独选节点（比如选会员价格便宜或解锁好的地区） |
 | 🐟 漏网之鱼 | 没命中任何规则的流量，默认走代理，可改直连 |
 
-规则从上往下匹配：局域网直连 → 作者的直连名单 → 屏蔽走代理的 QUIC → AI 名单 → 作者的代理名单 → 国内域名直连 → 国内 IP 直连 → 其余走「漏网之鱼」。
+规则从上往下匹配：局域网直连 → 作者的直连名单 → 屏蔽走代理的 QUIC → AI 名单 → YouTube / Netflix（📺 流媒体）→ Google / GitHub / Telegram / Twitter（🚀 节点选择）→ 作者的代理名单 → 国内域名直连 → 国内 IP 直连 → 其余走「漏网之鱼」。
+
+YouTube、Netflix、Google、GitHub、Telegram、Twitter 的规则来自 [MetaCubeX/meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat)（mrs 格式，每个只有几 KB），手机版 Shadowrocket 用的是 [blackmatrix7/ios_rule_script](https://github.com/blackmatrix7/ios_rule_script) 里对应的列表。
 
 国内 IP 规则带 `no-resolve`：有域名的连接只按域名判断，不在国内域名名单里的域名默认走代理（想直连就把「🐟 漏网之鱼」切成直连）。
 

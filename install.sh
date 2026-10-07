@@ -275,7 +275,14 @@ for pair in \
 	lb_proxy.list=$LB_LIST/Proxy.list \
 	cn_site.mrs=$META_GEO/geosite/cn.mrs \
 	cn_ip.list=$META_GEO/geoip/cn.list \
-	cn_ip.mrs=$META_GEO/geoip/cn.mrs
+	cn_ip.mrs=$META_GEO/geoip/cn.mrs \
+	ms_youtube.mrs=$META_GEO/geosite/youtube.mrs \
+	ms_netflix.mrs=$META_GEO/geosite/netflix.mrs \
+	ms_google.mrs=$META_GEO/geosite/google.mrs \
+	ms_github.mrs=$META_GEO/geosite/github.mrs \
+	ms_telegram.mrs=$META_GEO/geosite/telegram.mrs \
+	ms_twitter.mrs=$META_GEO/geosite/twitter.mrs \
+	ms_telegram_ip.mrs=$META_GEO/geoip/telegram.mrs
 do
 	file=${pair%%=*}
 	url=${pair#*=}

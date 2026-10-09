@@ -21,7 +21,7 @@
 
 - **一条命令装好**：登录路由器粘贴一条命令、一路回车。自动沿用 OpenClash 里已有的订阅、自动停用冲突插件，装不上自动切回原样
 - **订阅在后台网页里填**：路由器后台多一个「服务 → LiteBox」页面，订阅框在最上面，粘贴、点保存就生效，还能看到节点数、套餐流量和到期日
-- **GL 官方固件直接装**：GL 固件是 OpenWrt 21.02，[Open-Box](https://github.com/liandu2024/Open-Box) 要求 OpenWrt 24 以上装不了；LiteBox 专门按 21.02 写，不用刷机
+- **GL 官方固件直接装**：GL 固件是 OpenWrt 21.02（fw3 / iptables），LiteBox 专门按它写，不用刷机，也不用换 dnsmasq-full、装 Ruby
 - **国内流量不进内核**：国内网站直接从 WAN 出去，不占代理的 CPU，还能用上路由器的硬件加速；境外 TCP 走 iptables 转发，比 TUN 省约 70% CPU
 - **省内存**：只有一个 mihomo 进程，常驻约 50MB，大流量下也不涨；超过上限自动重启
 - **分流规则现成的**：用[视频作者](https://youtu.be/G_7AmjfSRQ8)的[域名集](https://github.com/liandu2024/clash/tree/main/list)，每天自动更新；ChatGPT / Claude / Gemini / Grok 等走单独的 🤖 AI 分组
@@ -47,7 +47,7 @@
 
 **1. 真机（GL-MT3600BE，OpenWrt 21.02 第三方固件，aarch64，512MB 内存）**：只验证过 **v0.4.0**——加速层生效（国内 6206 个 IP 段不进内核、TCP 走 iptables 转发），内核内存 43MB（峰值 47MB），61 个节点，换下 OpenClash 后系统可用内存从 68MB 增加到 135MB。v0.5.0 以后的功能（概览页、路由测试、LuCI 页面、AI 分组、规则校验等）**还没在真机上跑过**。
 
-**2. 云端 x86_64**（下表和后面「和 OpenClash 比」的数字都是这一类）：OpenWrt 21.02.7 / ImmortalWrt 的 x86_64 环境，按用户流程从头安装，局域网接一台模拟手机：
+**2. 云端 x86_64**（下表和后面「为什么不直接装 OpenClash」里的实测对比都是这一类）：OpenWrt 21.02.7 / ImmortalWrt 的 x86_64 环境，按用户流程从头安装，局域网接一台模拟手机：
 
 | 项目 | 结果 |
 |---|---|
@@ -70,7 +70,21 @@ x86 测试机比真机快得多：处理 100MB 流量测试机约用 1 秒 CPU�
 
 用了的话欢迎把 `litebox doctor` 的输出发上来（不含订阅地址和面板密码）。
 
-## 和 OpenClash 比
+## 为什么不直接装 OpenClash
+
+OpenClash 是 OpenWrt 上最常用的代理插件，内核也是 mihomo。LiteBox 用的是同一个内核，区别在外面这一层：
+
+| | GL-MT3600BE 实际情况 | OpenClash | LiteBox |
+|---|---|---|---|
+| 系统 | GL 官方固件 = OpenWrt 21.02，fw3 / iptables | 能装 | 专门按 21.02、fw3 / iptables 写 |
+| 依赖和存储 | 自带 dnsmasq，没有 Ruby | 要把 dnsmasq 换成 dnsmasq-full，另装 Ruby、bash 等；插件约 25MB（不含内核） | 约 6MB（不含内核），用系统自带的工具，缺 curl、unzip 时自动装 |
+| 内存 | 512MB | 内核占用和 LiteBox 一样（见下面实测） | 只有一个内核进程，常驻约 50MB |
+| 国内流量 | | 默认也进内核，要手动开「绕过中国大陆 IP」 | 默认不进内核 |
+| 功能 | | **多得多**：订阅转换、覆写、多种代理模式、LuCI 页面里改各种设置 | 够用：分组、分流、面板、自检 |
+
+真机数据（GL-MT3600BE，v0.4.0）：换下 OpenClash 后，系统可用内存从 68MB 增加到 135MB。
+
+### 实测对比
 
 （云端 x86 数据）在云端同一台测试路由器、同一部测试手机上，用同一个 mihomo 内核（v1.19.31）、同一份订阅和分流规则，依次装 LiteBox 和最新的 OpenClash（v0.47.156，fake-ip 模式），下载同一个 22MB 文件，记录代理内核用掉的 CPU：
 
@@ -81,16 +95,42 @@ x86 测试机比真机快得多：处理 100MB 流量测试机约用 1 秒 CPU�
 | OpenClash 开「绕过中国大陆 IP」 | 0ms / 1220–1490 MB/s | 80–130ms | 51MB |
 | LiteBox v0.3 及以前（只用 TUN） | 210–340ms / 75–114 MB/s | 270–390ms | 50MB |
 
-其他方面：
-
 | 项目 | LiteBox | OpenClash | 说明 |
 |---|---|---|---|
 | 新域名 DNS 解析 | **0.8ms** | 24ms | OpenClash 默认打开 `store-fake-ip`（把每个 fake-ip 映射存下来），LiteBox 关掉了：把 LiteBox 也打开后同样变成 23ms，存到内存里也一样慢（见「已知限制」） |
 | 重启到恢复代理 | **6–7 秒** | 9–10 秒 | |
-| 占用存储（不含内核） | **约 6MB** | 约 25MB，另需 Ruby、bash、dnsmasq-full 等依赖 | |
-| 功能 | 够用：分组、分流、面板、自检 | **多得多**：订阅转换、覆写、多种代理模式、LuCI 页面里改各种设置 | |
 
 简单说：**同一个内核，速度、内存一样**；LiteBox 开箱就是 OpenClash 调好之后的水平（国内不进内核、境外走 iptables 转发），DNS 更快、更省存储、装和管更简单；OpenClash 功能更全。已经在用 OpenClash 而且满意的，没必要换。
+
+### 用到的组件
+
+LiteBox 全部用开源组件，安装和管理脚本是自己写的 shell 脚本：
+
+| 组件 | 作用 | 来源 |
+|---|---|---|
+| [mihomo](https://github.com/MetaCubeX/mihomo) v1.19.31 | 代理内核：订阅、分组、分流、DNS、tun 透明代理 | 官方 Release，SHA256 写死在 `install.sh` 里校验 |
+| [zashboard](https://github.com/Zephyruso/zashboard) v3.29.1 | 网页面板（无字体版，约 2.7MB），由内核直接提供，不另起进程 | 官方 Release，同样校验 SHA256 |
+| 分流规则 | AI / 直连 / 代理域名集 + YouTube、Google 等常用服务 + 国内域名和 IP 段 | [liandu2024/clash](https://github.com/liandu2024/clash/tree/main/list)、[MetaCubeX/meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) |
+
+### 默认就调好的设置
+
+| 设置 | LiteBox 里 |
+|---|---|
+| 国内流量不进内核 | 国内域名返回真实 IP，国内 IP 由防火墙直接放行走 WAN；境外 TCP 用 iptables 转发（`litebox accel on/off`） |
+| 屏蔽走代理的 QUIC | 浏览器自动退回 TCP，节点 UDP 差时更流畅；国内站点不受影响（`litebox quic on/off`） |
+| 国内 IP 规则加 `no-resolve` | 有域名的连接只按域名判断，不为匹配 IP 段去解析境外域名 |
+| fake-ip 对应表不存盘 | 新域名解析快（见上表），代价见「已知限制」 |
+| 联发科硬件流量卸载 | 出问题时 `litebox stack gvisor`；`litebox doctor` 发现开着流量卸载会提示 |
+| 手机按同一套规则分流 | [手机版](#手机版)：安卓（FlClash / Clash Meta）和 iPhone（Shadowrocket）配置，不用装专门的 App |
+| 一键升级 | `litebox update`（配置和订阅保留，安装脚本和安装包都先校验 SHA256） |
+
+### 内存控制
+
+- 不加载 GeoSite / GeoIP 数据库（国内规则改用体积小得多的 mrs 格式）、关闭进程查找
+- `GOMEMLIMIT=100MiB`：接近 100MB 时 Go 运行时更积极地回收内存
+- 看门狗：cron 每 5 分钟检查一次（间隔可改，见下面「看门狗」），常驻内存超过 **180MB** 自动重启内核
+
+两个上限都在 `/etc/litebox/litebox.conf` 里改（`MEM_SOFT_MB`、`MEM_HARD_MB`），改完 `litebox restart`。
 
 ## 下载
 
@@ -104,41 +144,6 @@ x86 测试机比真机快得多：处理 100MB 流量测试机约用 1 秒 CPU�
 | [litebox.zip](https://github.com/lyr05142002-dot/Q7Y/releases/latest/download/litebox.zip) | 只有脚本（几十 KB），安装时再联网下载内核和面板，支持 aarch64 / armv7 / x86_64 |
 
 手机见[手机版](#手机版)。
-
-## 为什么不直接装 Open-Box
-
-| | GL-MT3600BE 实际情况 | Open-Box 要求 |
-|---|---|---|
-| CPU | MT7987A，4×Cortex-A53（`ARMv8 Processor rev 4`，aarch64） | aarch64 ✅ |
-| 系统 | GL 官方固件 = OpenWrt 21.02，fw3 / iptables，musl 1.1.x | OpenWrt 24+、musl ≥ 1.2.4（安装脚本直接拒绝更老的系统），nftables ❌ |
-| 内存 | 512MB | 要求 512MB 内存、512MB 存储，常驻 Node.js 面板 |
-
-Open-Box 的面板和 App 是闭源的，没法改，所以 LiteBox 全部用开源组件，从头写了安装和管理脚本（**没有复制 Open-Box 的代码**）：
-
-| 组件 | 作用 | 来源 |
-|---|---|---|
-| [mihomo](https://github.com/MetaCubeX/mihomo) v1.19.31 | 代理内核：订阅、分组、分流、DNS、tun 透明代理 | 官方 Release，SHA256 写死在 `install.sh` 里校验 |
-| [zashboard](https://github.com/Zephyruso/zashboard) v3.29.1 | 网页面板（无字体版，约 2.7MB），由内核直接提供，不另起进程 | 官方 Release，同样校验 SHA256 |
-| 分流规则 | AI / 直连 / 代理域名集 + YouTube、Google 等常用服务 + 国内域名和 IP 段 | [liandu2024/clash](https://github.com/liandu2024/clash/tree/main/list)、[MetaCubeX/meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) |
-
-Open-Box 有些做法很实用，LiteBox 用自己的方式实现了：
-
-| Open-Box 的做法 | LiteBox 里 |
-|---|---|
-| 默认屏蔽走代理的 QUIC，浏览器退回 TCP，节点 UDP 差时更流畅 | 默认屏蔽，`litebox quic on/off` 切换；国内站点不受影响 |
-| 「IP 只管 IP，域名只管域名」，不为匹配 IP 段去解析境外域名 | 国内 IP 规则加 `no-resolve` |
-| 开着硬件流量卸载的联发科机器出问题时换 gvisor 协议栈 | `litebox stack gvisor`；`litebox doctor` 发现开着流量卸载会提示 |
-| 安卓 App 的「本地分流」：手机按路由器同一套规则自己分流 | [手机版](#手机版)：安卓（FlClash / Clash Meta）和 iPhone（Shadowrocket）配置，不用装专门的 App |
-| 一键升级 | `litebox update`（配置和订阅保留，安装脚本和安装包都先校验 SHA256） |
-| 直连不进内核 | 国内域名返回真实 IP，国内 IP 由防火墙直接放行走 WAN；境外 TCP 用 iptables 转发（`litebox accel on/off`） |
-
-### 内存控制
-
-- 不加载 GeoSite / GeoIP 数据库（国内规则改用体积小得多的 mrs 格式）、关闭进程查找
-- `GOMEMLIMIT=100MiB`：接近 100MB 时 Go 运行时更积极地回收内存
-- 看门狗：cron 每 5 分钟检查一次（间隔可改，见下面「看门狗」），常驻内存超过 **180MB** 自动重启内核
-
-两个上限都在 `/etc/litebox/litebox.conf` 里改（`MEM_SOFT_MB`、`MEM_HARD_MB`），改完 `litebox restart`。
 
 ## 图文安装教程
 

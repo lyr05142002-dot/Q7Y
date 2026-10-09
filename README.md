@@ -9,7 +9,7 @@
 [![最新版本](https://img.shields.io/github/v/release/lyr05142002-dot/Q7Y?label=%E6%9C%80%E6%96%B0%E7%89%88)](https://github.com/lyr05142002-dot/Q7Y/releases/latest)
 [![OpenWrt 21.02 安装测试](https://github.com/lyr05142002-dot/Q7Y/actions/workflows/test.yml/badge.svg)](https://github.com/lyr05142002-dot/Q7Y/actions/workflows/test.yml)
 
-[下载](#下载) · [图文安装教程](#图文安装教程) · [**改订阅 / 换机场**](#改订阅--换机场) · [手机版](#手机版) · [常用命令](#常用命令) · [出问题怎么办](#装好后自检出问题怎么办)
+[下载](#下载) · [图文安装教程](#图文安装教程) · [**改订阅 / 换机场**](#改订阅--换机场) · [手机版](#手机版) · [常见问题](#常见问题) · [卸载](#卸载) · [常用命令](#常用命令)
 
 </div>
 
@@ -147,33 +147,61 @@ LiteBox 全部用开源组件，安装和管理脚本是自己写的 shell 脚�
 
 ## 图文安装教程
 
-![安装流程总览](docs/img/01-flow.png)
+一共 5 步，大约 5 分钟：
 
-**开始前**：电脑用网线或 Wi-Fi 连着这台路由器。在 GL 管理后台（http://192.168.8.1）关掉 GL 自带的 VPN 客户端和 AdGuard Home。装过 OpenClash、Passwall 的**不用自己处理**，安装时会自动停用（配置保留，随时能切回）。
+1. 打开电脑上的终端
+2. 登录路由器
+3. 粘贴安装命令
+4. 粘贴机场订阅地址，等它装完
+5. 打开面板，选节点
 
-### 第 1 步：登录路由器
+> **关于截图**：下面每一步的截图，都是在云端测试路由器上真实操作时截的（x86 的 OpenWrt，模拟 GL-MT3600BE），终端里的文字都是实际输出，面板密码、订阅地址、SSH 指纹已经打码。在你的 GL 路由器上，提示符是 `root@GL-MT3600BE:~#`，「系统」一行显示的是 aarch64 和 500MB 左右的内存，其余一样。
 
-电脑按 <kbd>Win</kbd>+<kbd>R</kbd>，输入 `powershell` 回车，在打开的窗口里输入：
+**开始前**准备好三件事：
+
+- 电脑用网线或 Wi-Fi 连着这台路由器
+- 机场的订阅地址：在机场网站找「**复制订阅链接**」（也叫 Clash 订阅、一键订阅）。暂时没有也能装，装好后再填
+- 在 GL 管理后台（http://192.168.8.1）关掉 GL 自带的 VPN 客户端（菜单「VPN」）和 AdGuard Home（菜单「应用程序」）。装过 OpenClash、Passwall 的**不用自己处理**，安装时会自动停用（配置保留，随时能切回）
+
+### 第 1 步：打开电脑上的终端
+
+- **Windows**：按 <kbd>Win</kbd>+<kbd>R</kbd>，输入 `powershell`，回车（Windows 11 也可以右键「开始」按钮 →「终端」）
+- **Mac**：按 <kbd>⌘</kbd>+<kbd>空格</kbd>，输入「终端」，回车
+
+在这个窗口里粘贴：Windows 点**鼠标右键**，Mac 按 <kbd>⌘</kbd>+<kbd>V</kbd>。
+
+### 第 2 步：登录路由器
+
+输入下面这行，回车：
 
 ```
 ssh root@192.168.8.1
 ```
 
-问 yes/no 就输入 `yes`，然后输入 GL 后台的管理密码（**输入时不显示**，输完回车）。
+第一次登录会问 `yes/no`，输入 `yes` 回车；然后输入路由器的管理密码（就是登录 GL 后台的密码，**输入时屏幕上什么都不显示，是正常的**），回车。
 
-![登录路由器](docs/img/02-login.png)
+![第 2 步：登录路由器](docs/img/install-2-login.png)
 
-提示 `REMOTE HOST IDENTIFICATION HAS CHANGED` 连不上：先执行 `ssh-keygen -R 192.168.8.1`，再重新登录。
+<a name="第-2-步粘贴一条命令一路回车"></a>
 
-### 第 2 步：粘贴一条命令，一路回车
+### 第 3 步：粘贴安装命令
 
-**推荐：先下载、校验、再执行。** 复制下面这一整行，在 PowerShell 窗口里**点鼠标右键**粘贴，回车：
+复制下面这一整行，粘贴到窗口里，回车：
 
 ```
 cd /tmp && curl -fsSLO https://github.com/lyr05142002-dot/Q7Y/releases/latest/download/get.sh && echo "509c335bbcef9d98bd8bc56d2174dc920e83179284be931a2740c7e621b89d4a  get.sh" | sha256sum -c - && sh get.sh
 ```
 
 它先下载安装脚本 `get.sh`，核对 SHA256 和上面写的一致（显示 `get.sh: OK`）才运行；对不上会显示 `FAILED` 并停下，什么都不会装。`get.sh` 再去下载安装包，同样校验 SHA256 后才安装。
+
+![第 3 步：粘贴安装命令](docs/img/install-3-command.png)
+
+**装过 OpenClash、Passwall 等插件的**，会先多问两句，**都直接回车**：
+
+![装过 OpenClash 时多问的两句](docs/img/install-3-openclash.png)
+
+- 第一句：装好后停用它们（只是停用，配置都保留，以后 `litebox switch-back` 一条命令切回）
+- 第二句：沿用它们里面已有的机场订阅。想换一个就输入 `n` 回车，再粘贴新的。沿用了就不会再问第 4 步的订阅地址
 
 <details>
 <summary>想自己一步步来，或者核对校验值</summary>
@@ -194,51 +222,64 @@ sha256sum get.sh
 curl -fsSL https://raw.githubusercontent.com/lyr05142002-dot/Q7Y/main/get.sh | sh
 ```
 
-接下来它会问两件事：
+路由器打不开 GitHub 时，改用下面这条（经镜像下载，校验值不变，镜像站改不了内容）；还不行就用后面的[离线包](#方式二离线包路由器完全连不上-github-时)：
 
-1. 检测到 OpenClash / Passwall 等：**直接回车**，停用它们（只是停用，下载会趁它们还在工作时先完成）
-2. **机场订阅地址**：
-   - 检测到 OpenClash 里已有的订阅时，问「直接用这个订阅吗」：**回车**就用它；想换一个就输入 `n` 回车，再粘贴新的
-   - 没检测到时会显示一个说明框，让你粘贴：在机场网站找「**复制订阅链接**」（也叫 Clash 订阅、一键订阅），复制后在 PowerShell 窗口里**点鼠标右键**粘贴，回车。粘错了（不是 `https://` 开头）会让你重新粘
-   - 暂时没有订阅就直接回车跳过，装好后按下面的「[改订阅 / 换机场](#改订阅--换机场)」再填
+```
+cd /tmp && curl -fsSLO https://ghfast.top/https://github.com/lyr05142002-dot/Q7Y/releases/latest/download/get.sh && echo "509c335bbcef9d98bd8bc56d2174dc920e83179284be931a2740c7e621b89d4a  get.sh" | sha256sum -c - && sh get.sh --mirror https://ghfast.top
+```
 
-然后等 1–3 分钟，看到「安装完成，已启动」就好了。
+### 第 4 步：粘贴订阅地址，等它装完
 
-![粘贴一条命令，一路回车](docs/img/03-install.png)
+看到 `订阅地址：` 时，粘贴机场的订阅地址，回车。粘错了（不是 `http://` 或 `https://` 开头）会让你重新粘；暂时没有就直接回车跳过，装好后按「[改订阅 / 换机场](#改订阅--换机场)」再填。
+
+![第 4 步：粘贴订阅地址](docs/img/install-4-sub.png)
+
+接下来全自动：下载内核、面板和分流规则，等 1–3 分钟，看到「**安装完成，已启动**」就好了，家里的设备已经在分流。
+
+![第 4 步：安装完成](docs/img/install-4-done.png)
 
 - **装不上也不会断网**：LiteBox 起不来时会自动切回原来的 OpenClash，或者恢复直连
-- 路由器打不开 GitHub 时，经镜像下载（校验值不变，镜像站改不了内容）；还不行就用后面的[离线包](#方式二离线包路由器完全连不上-github-时)：
-  ```
-  cd /tmp && curl -fsSLO https://ghfast.top/https://github.com/lyr05142002-dot/Q7Y/releases/latest/download/get.sh && echo "509c335bbcef9d98bd8bc56d2174dc920e83179284be931a2740c7e621b89d4a  get.sh" | sha256sum -c - && sh get.sh --mirror https://ghfast.top
-  ```
+- 「加速」一行写着「**当前为降级模式**」：路由器缺 ipset / ip-full，照常能用，只是国内流量也要经过内核、更费 CPU。按它给的命令补装，再执行 `litebox restart`
 
-### 第 3 步：打开面板
+### 第 5 步：打开面板，选节点
 
-把安装完显示的**一键登录链接**复制到手机或电脑浏览器，会自动填好并进入面板。链接找不到了，在路由器上运行 `litebox panel`。也可以按下图手动填：
+把安装结束时显示的「**一键登录面板**」链接复制到电脑或手机浏览器的地址栏，回车，直接进入面板，不用再输密码：
 
-![打开面板](docs/img/04-panel.png)
+![第 5 步：打开面板](docs/img/panel-1-open.png)
 
-进入面板后在「代理」页切换节点：
+点分组卡片展开，点一个节点就切过去了，立即生效：
 
-![面板里的分组（每个都带图标）](docs/img/05-groups.png)
+![第 5 步：选节点](docs/img/panel-2-nodes.png)
+
+<sub>截图来自云端测试环境，节点是演示数据；测试环境访问不了测速网址，所以节点上没有显示延迟。</sub>
+
+链接找不到了：登录路由器执行 `litebox panel` 再显示一次，或者在路由器后台「服务 → LiteBox」点「打开面板」：
+
+![找回面板链接](docs/img/panel-cli.png)
 
 ### 改订阅 / 换机场
 
 **方法一：在路由器后台网页里改（推荐）**
 
-浏览器打开路由器后台（OpenWrt / iStoreOS 是 `http://192.168.8.1` 或你平时进的地址），菜单 **服务 → LiteBox**。最上面就是订阅地址框：粘贴新的订阅地址，点「**保存并启动**」，十几秒后下面会显示加载了多少个节点、套餐还剩多少流量、什么时候到期。
+1. 浏览器打开路由器后台（LuCI），用 root 和管理密码登录，点菜单「**服务 → LiteBox**」：
 
-![路由器后台的 LiteBox 页面](docs/img/15-luci.png)
+   ![菜单：服务 → LiteBox](docs/img/luci-1-menu.png)
 
-<sub>截图来自云端测试用的 OpenWrt 21.02.7（自带 LuCI），订阅地址是演示数据。这个页面需要 LuCI 21.02 或更新版本（iStoreOS、ImmortalWrt 21.02+、OpenWrt 21.02+、GL 固件里装了 LuCI 的都行），安装时自动加上。第一次打开如果提示没有权限，退出后台重新登录一次。</sub>
+2. 最上面就是订阅地址框：粘贴新的订阅地址，点「**保存并启动**」，十几秒后下面会显示加载了多少个节点（机场提供的话，还有剩余流量和到期日）：
+
+   ![粘贴订阅、保存并启动](docs/img/luci-2-sub.png)
+
+<sub>截图来自云端测试用的 OpenWrt 21.02.7（自带 LuCI），订阅地址已打码。这个页面需要 LuCI 21.02 或更新版本（iStoreOS、ImmortalWrt 21.02+、OpenWrt 21.02+、GL 固件里装了 LuCI 的都行），安装时自动加上。第一次打开如果提示没有权限，退出后台重新登录一次。测试容器里没有 ipset，所以「流量加速」一行显示国内流量仍经过内核。</sub>
 
 **方法二：一条命令**
 
-SSH 登录路由器（第 1 步），执行（把地址换成你的，**保留两边的单引号**）：
+SSH 登录路由器（第 2 步），执行（把地址换成你的，**保留两边的单引号**）：
 
 ```
 litebox sub '你的订阅地址'
 ```
+
+![一条命令换订阅](docs/img/sub-cli.png)
 
 它会自动去掉多复制的空格和引号，保存后重启并告诉你加载了几个节点。只想重新拉一次节点（机场更新了节点列表）：后台页面点「更新节点」，或者执行 `litebox sub-update`。
 
@@ -266,29 +307,31 @@ litebox sub '你的订阅地址'
 
 流量记录说明：看门狗每 5 分钟记一次经过内核的流量，平时写在内存里、每小时存回闪存一次。开着流量加速时国内 IP 不进内核，不计入。
 
-### 装好后自检、出问题怎么办
+### 装好后自检
 
-在路由器上运行 `litebox doctor`，它会逐项检查，每个失败项下面都写了怎么处理：
+登录路由器执行 `litebox doctor`，它会逐项检查，每个失败项下一行的 → 写着怎么处理：
 
-![一键自检](docs/img/06-doctor.png)
+![一键自检](docs/img/doctor.png)
 
-| 遇到的情况 | 执行 |
-|---|---|
-| 上不了网 | `litebox direct`（立即恢复直连），再把 `litebox doctor` 的输出发出来求助（不含订阅地址和面板密码） |
-| 想换回 OpenClash | `litebox switch-back`（安装时停用的插件恢复原样） |
-| 升级到新版 | `litebox update` |
+<sub>截图来自云端测试环境。测试环境访问不了百度和 Google，所以这两项显示失败，正好可以看到出问题时的样子。</sub>
+
+遇到问题先看「[常见问题](#常见问题)」。上不了网时先执行 `litebox direct` 立即恢复直连。
 
 ### 方式二：离线包（路由器完全连不上 GitHub 时）
 
-**1. 在电脑上下载** [litebox-arm64-offline.zip](https://github.com/lyr05142002-dot/Q7Y/releases/latest/download/litebox-arm64-offline.zip)，右键「全部解压缩」，得到 `litebox` 文件夹。想核对下载的文件：PowerShell 里执行 `certutil -hashfile litebox-arm64-offline.zip SHA256`，和 Release 页面列的校验值比一下：
+**1. 在电脑上下载** [litebox-arm64-offline.zip](https://github.com/lyr05142002-dot/Q7Y/releases/latest/download/litebox-arm64-offline.zip)（GL-MT3600BE 等 aarch64 路由器用这个），右键「全部解压缩」。想核对下载的文件：PowerShell 里执行 `certutil -hashfile litebox-arm64-offline.zip SHA256`，和 Release 页面说明末尾列的校验值比一下。
 
-![下载离线包](docs/img/offline-1-download.png)
+**2. 传到路由器**：打开解压出来的文件夹，能看到里面的 `litebox` 文件夹时，在空白处右键 →「在终端中打开」（Windows 10 是按住 <kbd>Shift</kbd> 点右键 →「在此处打开 PowerShell 窗口」），执行下面这条，输入路由器管理密码：
 
-**2. 传到路由器**：用 [HexHub](https://www.hexhub.cn/) 的 SFTP 把整个 `litebox` 文件夹拖到路由器的 `/tmp/`，或者在解压目录里打开 PowerShell 执行 `scp -O -r litebox root@192.168.8.1:/tmp/`（提示 `-O` 不认识就去掉 `-O`）：
+```
+scp -O -r litebox root@192.168.8.1:/tmp/
+```
 
-![上传到路由器](docs/img/offline-2-upload.png)
+提示 `-O` 不认识就去掉 `-O`。也可以用 [HexHub](https://www.hexhub.cn/) 等 SFTP 工具，把整个 `litebox` 文件夹拖到路由器的 `/tmp/` 下。
 
-**3. 登录路由器执行**下面这行，同样一路回车，之后从[第 3 步](#第-3-步打开面板)继续：
+![上传到路由器](docs/img/offline-upload.png)
+
+**3. 登录路由器执行**下面这行，后面和[第 4 步](#第-4-步粘贴订阅地址等它装完)一样：
 
 ```
 sh /tmp/litebox/install.sh
@@ -306,38 +349,126 @@ sh /tmp/litebox/install.sh
 
 ## 手机版
 
-和路由器**同一套分组和分流规则**（国内直连、AI 单独选节点、屏蔽走代理的 QUIC），在外面用流量也一样分流。手机自己连机场节点，不经过家里的路由器。
+### 在家：手机上不用装任何东西
 
-**最简单：手机浏览器打开 [lyr05142002-dot.github.io/Q7Y](https://lyr05142002-dot.github.io/Q7Y/)**，按页面提示操作。安卓填订阅地址就能生成配置文件，订阅地址只在手机浏览器里处理、不会上传；iPhone 一键导入 Shadowrocket。地址：
+手机连着装了 LiteBox 的路由器 Wi-Fi，就已经在分流了。**手机上原来开着的代理 App 在家时要关掉**，两层代理反而更慢。
+
+想用手机切换节点：手机浏览器打开安装时的「一键登录面板」链接（或路由器后台「服务 → LiteBox」→「打开面板」），和电脑上是同一个面板：
+
+<img src="docs/img/12-panel-phone.png" alt="手机打开路由器面板" width="40%">
+
+### 出门在外：手机自己连机场
+
+用的是和路由器**同一套分组和分流规则**（国内直连、AI 单独选节点、屏蔽走代理的 QUIC），在外面用流量也一样分流。手机自己连机场节点，不经过家里的路由器。配置在这个页面生成：
 
 ```
 https://lyr05142002-dot.github.io/Q7Y/
 ```
 
-<p>
-  <img src="docs/img/08-mobile-android.png" alt="安卓：填订阅地址生成配置" width="45%">
-  <img src="docs/img/09-mobile-iphone.png" alt="iPhone：一键导入 Shadowrocket" width="45%">
-</p>
+**安卓**（[FlClash](https://github.com/chen08209/FlClash/releases/latest) 或 [Clash Meta for Android](https://github.com/MetaCubeX/ClashMetaForAndroid/releases/latest)）：
 
-**安卓**（[FlClash](https://github.com/chen08209/FlClash/releases/latest) 或 [Clash Meta for Android](https://github.com/MetaCubeX/ClashMetaForAndroid/releases/latest)，下载 `arm64-v8a` 版本）：
+1. 安装其中一个 App，下载 `arm64-v8a` 版本的 apk
+2. 手机浏览器打开上面的地址，粘贴订阅地址，点「**生成并下载配置**」，得到 `litebox-android.yaml`（订阅地址只在手机浏览器里处理，不会上传）：
 
-1. 在上面的页面填订阅地址，点「生成并下载配置」，得到 `litebox-android.yaml`
-   （也可以下载 [android.yaml](docs/mobile/android.yaml)，把里面的 `__SUB_URL__` 换成订阅地址）
-2. App 里导入这个文件：FlClash「配置 → + → 文件」，Clash Meta「配置 → 新配置 → 导入文件」
-3. 选中它，打开开关。第一次启动会经代理下载规则，等十几秒
+   <img src="docs/img/phone-1-android.png" alt="安卓：粘贴订阅，生成配置" width="45%">
+
+3. 在 App 里导入这个文件：FlClash 是「配置 → 右下角 + → 文件」，Clash Meta 是「配置 → 新配置 → 导入文件」
+4. 选中这个配置，回首页打开开关。第一次启动会经代理下载分流规则，等十几秒再用
+
+（也可以下载 [android.yaml](docs/mobile/android.yaml)，自己把里面的 `__SUB_URL__` 换成订阅地址。）
 
 **iPhone**（Shadowrocket）：
 
-1. Shadowrocket 首页右上角 `+`，类型选 `Subscribe`，填订阅地址
-2. 「配置」页右上角 `+`，粘贴下面的地址并下载，然后点它「使用配置」：
-   ```
-   https://raw.githubusercontent.com/lyr05142002-dot/Q7Y/main/docs/mobile/shadowrocket.conf
-   ```
-3. 首页「全局路由」选「配置」，打开开关
+1. 用非中国大陆区的 Apple ID 在 App Store 安装 Shadowrocket
+2. 加订阅：Shadowrocket 首页右上角「+」，类型选 `Subscribe`，填订阅地址，保存
+3. 导入规则：Safari 打开上面的地址，切到「**iPhone**」，点「**一键导入 Shadowrocket**」；没反应就点「复制配置地址」，到 Shadowrocket 的「配置」页右上角「+」粘贴、下载：
 
-在家连着装了 LiteBox 的 Wi-Fi 时，手机上的代理可以关掉，路由器已经在分流了。
+   <img src="docs/img/phone-2-iphone.png" alt="iPhone：一键导入 Shadowrocket" width="45%">
+
+4. 「配置」页点刚下载的 `shadowrocket.conf` →「使用配置」，回首页「全局路由」选「配置」，打开开关
+
+配置地址（第 3 步要手动粘贴时用）：
+
+```
+https://raw.githubusercontent.com/lyr05142002-dot/Q7Y/main/docs/mobile/shadowrocket.conf
+```
+
+<sub>手机页面的截图是用仓库里的 docs/index.html 截的，和这个网址上的页面是同一份文件。</sub>
 
 > **都还没在真手机上验证过。** 安卓配置在云端用 mihomo 内核实际跑过（FlClash / Clash Meta 用的就是 mihomo）：规则 2 秒下载完，分流正确。Shadowrocket 配置是按它的格式写的，没法在云端运行，完全没验证过。有问题请反馈。
+
+## 常见问题
+
+求助时，把 `litebox doctor` 的整段输出发出来就行（它不含订阅地址和面板密码）。
+
+**登录路由器时**
+
+| 看到的提示 | 原因和处理 |
+|---|---|
+| `ssh` 不是内部或外部命令 | Windows 10 较老的版本没装 SSH 客户端：设置 → 应用 → 可选功能 → 添加「OpenSSH 客户端」；或者用 HexHub 等 SSH 工具 |
+| `Connection timed out`、`Connection refused` | 电脑没连着这台路由器，或者地址不对：确认连的是它的 Wi-Fi 或网线；GL 路由器默认是 192.168.8.1，改过就用你自己的 |
+| `Permission denied, please try again` | 密码不对。用的是登录 GL 后台的管理密码，输入时不显示，输完直接回车 |
+| `REMOTE HOST IDENTIFICATION HAS CHANGED` | 这台电脑以前连过别的 192.168.8.1（GL 路由器默认都是这个地址），或者路由器重置过：先执行 `ssh-keygen -R 192.168.8.1`，再重新登录 |
+
+**安装时**
+
+| 看到的提示 | 原因和处理 |
+|---|---|
+| `get.sh: FAILED`，后面什么都没装 | 下载下来的安装脚本和 README 里的校验值对不上（多半是下载不完整）：确认复制的是完整的一整行，稍后重试；还不行就用离线包。**不要跳过校验** |
+| `curl: (6)`、`curl: (7)`、`curl: (28)` 等 | 路由器连不上 GitHub：用第 3 步里的镜像命令，还不行就用离线包 |
+| `curl: not found` | 系统没有 curl：先执行 `opkg update && opkg install curl` |
+| `错误：存储空间不足` | 路由器存储不够：卸掉不用的插件，再重试 |
+| `错误：需要停用 … 才能安装` | 安装命令不是在能回答提问的窗口里运行的：在命令最后加 ` --yes` 重新运行（会停用这些插件，配置保留） |
+| 结尾写着「当前为降级模式」 | 缺 ipset / ip-full（或者是 fw4 防火墙）：照常能用，只是更费 CPU。按提示执行 `opkg update && opkg install ipset ip-full`，再 `litebox restart` |
+| `LiteBox 没能启动`，后面是「已自动切回原来的代理插件」或「已恢复直连」 | 网络不受影响。执行 `litebox log`，把输出发出来求助 |
+
+**装好以后**
+
+| 遇到的情况 | 处理 |
+|---|---|
+| 上不了网 | 先执行 `litebox direct` 立即恢复直连，再用 `litebox doctor` 看原因。修好后 `litebox enable` 重新启用 |
+| 节点是 0 个、后台显示订阅没加载 | 订阅地址复制不完整或已过期：到机场网站重新复制，用 `litebox sub '订阅地址'` 或后台页面重新填；只想重新拉一次节点用 `litebox sub-update` |
+| 所有节点都超时 | 订阅过期或机场故障：在面板里换节点、测速；`litebox doctor` 会告诉你是哪一项 |
+| 面板打不开、一键登录链接打不开 | 电脑或手机要连着这台路由器；`litebox status` 看内核是否在运行；链接找不到就执行 `litebox panel` |
+| 某个网站走的线路不对 | 概览页的「路由测试」或 `litebox route 域名`，看它命中了哪条规则 |
+| 路由器后台没有「服务 → LiteBox」，或提示没有权限 | 这个页面需要 LuCI 21.02 或更新版本；提示没有权限就退出后台重新登录一次。没有的话用 `litebox sub` 改订阅 |
+| `litebox update` 提示「升级脚本校验不通过」 | 什么都没改，网络照常。稍后再试；连不上 GitHub 时用 `litebox update --mirror https://ghfast.top` |
+| 访客网络、IPv6、浏览器自带的加密 DNS | 见「[已知限制](#已知限制)」 |
+
+**手机**
+
+| 遇到的情况 | 处理 |
+|---|---|
+| 在家时手机变慢 | 手机上的代理 App 还开着：在家连着路由器 Wi-Fi 时关掉它 |
+| Shadowrocket「一键导入」没反应 | 点「复制配置地址」，到 Shadowrocket「配置」页右上角「+」粘贴、下载 |
+| FlClash / Clash Meta 打开后上不了网 | 第一次启动要经代理下载规则，等十几秒；还不行就确认订阅没过期，在 App 的「代理」页换节点 |
+
+## 卸载
+
+登录路由器（[第 2 步](#第-2-步登录路由器)），执行：
+
+```
+litebox uninstall
+```
+
+![卸载](docs/img/uninstall.png)
+
+它会停掉并删除内核和 `litebox` 命令，还原 DNS 设置、防火墙规则（包括访客网络的放行）、定时任务和路由器后台的 LiteBox 页面。配置和订阅留在 `/etc/litebox`，以后重新安装会直接沿用。
+
+- **连配置和订阅一起删**：`litebox uninstall --purge`
+- 安装时停用过 OpenClash 等插件的，卸载后会列出恢复它们的命令，照着执行即可
+
+**换回 OpenClash 等插件**（不用卸载）：
+
+```
+litebox switch-back
+```
+
+![换回 OpenClash](docs/img/switch-back.png)
+
+它停用 LiteBox，恢复安装时停用的插件。想再换回 LiteBox，重新运行一次安装命令即可。
+
+**只是暂时不用**：`litebox direct` 停用 LiteBox、恢复直连（文件都在），想用时 `litebox enable`。
 
 ## 分组和分流
 
@@ -395,8 +526,8 @@ YouTube、Netflix、Google、GitHub、Telegram、X（Twitter）、TikTok 的规�
 | `litebox accel` / `on` / `off` | 查看 / 开关流量加速（国内 IP 不进内核、TCP 走 iptables 转发，默认开） |
 | `litebox quic on` / `off` | 屏蔽 / 放行走代理的 QUIC（默认屏蔽） |
 | `litebox stack gvisor` | 切换 TUN 协议栈（`system` 默认 / `gvisor` / `mixed`），开着硬件加速出问题时用 |
-| `litebox switch-back` | 停用 LiteBox，恢复安装时停用的 OpenClash 等插件 |
-| `litebox uninstall` | 卸载（`--purge` 连配置和订阅一起删） |
+| `litebox switch-back` | 停用 LiteBox，恢复安装时停用的 OpenClash 等插件（见「[卸载](#卸载)」） |
+| `litebox uninstall` | 卸载（`--purge` 连配置和订阅一起删，见「[卸载](#卸载)」） |
 
 升级：执行 `litebox update`；或下载新版安装包，按第 2、3 步重新执行 `install.sh`。配置、订阅、面板密钥都会保留。
 

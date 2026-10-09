@@ -70,7 +70,7 @@ jobs:
               echo
               echo "一键安装脚本 get.sh：\`$(awk '$2 == "get.sh" { print $1 }' dist/SHA256SUMS)\`"
               echo
-              echo "推荐的安装方式（先下载、校验、再执行）见 [README](https://github.com/${GITHUB_REPOSITORY}#第-2-步粘贴一条命令一路回车)。全部文件："
+              echo "推荐的安装方式（先下载、校验、再执行）见 [README](https://github.com/${GITHUB_REPOSITORY}#第-3-步粘贴安装命令)。全部文件："
               echo
               echo '```'
               cat dist/SHA256SUMS

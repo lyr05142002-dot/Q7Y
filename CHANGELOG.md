@@ -2,6 +2,13 @@
 
 每个版本的完整说明（含下载说明）在 [docs/releases](docs/releases/)，发布后也在 [Releases 页面](https://github.com/lyr05142002-dot/Q7Y/releases)。
 
+## v0.7.1
+
+- 从旧版升级时，配置里没有视频作者个人条目的开关就自动补上（注释行，默认不启用，分流结果不变；改完先过 `mihomo -t` 才替换，找不到插入位置就不改），`litebox personal on` 不用再 `--reset-config`。v0.2.0 到 v0.6.1 的配置模板都验证过
+- README：说明为什么保持 `store-fake-ip` 关闭（实测打开后每个新域名首次解析多约 20ms，而且一个接一个排队：同时解析 40 个新域名 0.84 秒，关着 0.02 秒；放到内存里也一样，慢在内核的批量提交，和闪存无关）；更正「升级不会改动 config.yaml」的说法
+- CI 的 `actions/checkout` 升到 v5（v4 用的 Node 20 已弃用）
+- 测试：升级测试模拟没有个人条目开关的旧配置，检查补上开关、默认不启用、`personal on/off` 直接可用
+
 ## v0.7.0
 
 **安全**

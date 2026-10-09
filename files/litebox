@@ -925,7 +925,7 @@ cmd_rules_update() { # [--force] [--from 配置文件] [--mirror 镜像] [--inst
 
 # 视频作者个人条目的开关（默认关）
 cmd_personal() { # on|off|空
-	grep -q '# LITEBOX_PERSONAL$' "$CONFIG" || die "当前配置里没有这个开关（旧配置）。重新生成：litebox update --reset-config"
+	grep -q '# LITEBOX_PERSONAL$' "$CONFIG" || die "当前配置里没有这个开关（旧配置）。执行 litebox update 会自动加上；加不上的话（规则改动较多）用 litebox update --reset-config 重新生成"
 	case "${1:-}" in
 		on)
 			[ -s "$HOME_DIR/rules/personal_direct.list" ] || die "还没有个人条目文件，先执行 litebox rules-update"

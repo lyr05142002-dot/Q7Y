@@ -255,14 +255,17 @@ run_round() { # 名字 docker网络参数
 
 	local secret
 	secret=$(x '. /etc/litebox/litebox.conf; echo $SECRET')
-	# 模拟 v0.6 及以前的配置：规则集是 type: http（内核自己下载、不校验）
-	x 'sed -i "/^rule-providers:/,/^rules:/ s/^    type: file$/    type: http/" /etc/litebox/config.yaml' || true
+	# 模拟 v0.6 及以前的配置：规则集是 type: http（内核自己下载、不校验），也没有个人条目的开关
+	x 'sed -i -e "/^rule-providers:/,/^rules:/ s/^    type: file$/    type: http/" -e "/# LITEBOX_PERSONAL$/d" -e "/^  # 视频作者个人用的条目/d" /etc/litebox/config.yaml' || true
 	out=$(x 'sh /root/litebox/install.sh < /dev/null 2>&1') || true
 	if echo "$out" | grep -q '安装完成'; then ok "覆盖安装（升级）"; else bad "覆盖安装（升级）"; echo "$out" | tail -5; fi
 	check "升级保留面板密钥" x '[ "$(. /etc/litebox/litebox.conf; echo $SECRET)" = "'"$secret"'" ]'
 	check "升级不重复加定时任务" x '[ "$(grep -c "litebox watchdog" /etc/crontabs/root)" = 1 ] && [ "$(grep -c "litebox rules-update" /etc/crontabs/root)" = 1 ]'
 	check "升级保留看门狗间隔" x 'grep -q "^\*/10 \* \* \* \* /usr/bin/litebox watchdog # litebox$" /etc/crontabs/root && grep -q "^WATCHDOG_MIN=10$" /etc/litebox/litebox.conf'
 	check "升级时旧配置的规则集改成 type: file，并留备份" x '! sed -n "/^rule-providers:/,/^rules:/p" /etc/litebox/config.yaml | grep -q "type: http" && grep -q "^    type: http$" /etc/litebox/config.yaml.pre-0.7 && litebox check'
+	if echo "$out" | grep -q '加上了视频作者个人条目的开关'; then ok "升级时提示补上了个人条目的开关"; else bad "升级时提示补上了个人条目的开关"; fi
+	check "升级时旧配置补上个人条目的开关（默认不启用）" x '[ "$(grep -c "# LITEBOX_PERSONAL$" /etc/litebox/config.yaml)" = 4 ] && litebox personal | grep -q 未启用 && ! grep -q "^  - RULE-SET,personal" /etc/litebox/config.yaml'
+	check "升级后不用 --reset-config，litebox personal on / off 直接能用" x 'litebox personal on >/dev/null && grep -q "^  - RULE-SET,personal_direct,DIRECT # LITEBOX_PERSONAL$" /etc/litebox/config.yaml && grep -q "^  - RULE-SET,personal_proxy,🚀 节点选择 # LITEBOX_PERSONAL$" /etc/litebox/config.yaml && litebox check >/dev/null && litebox personal off >/dev/null && ! grep -q "^  - RULE-SET,personal" /etc/litebox/config.yaml'
 	out=$(x 'sh /root/litebox/install.sh --reset-config < /dev/null 2>&1') || true
 	check "--reset-config 保留订阅" x '[ "$(litebox sub)" = "http://127.0.0.1:8765/sub.yaml?token=SECRET&a=it'"'"'s" ]'
 	check "--reset-config 留下旧配置备份" x '[ -f /etc/litebox/config.yaml.old ]'

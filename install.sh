@@ -393,6 +393,31 @@ if [ -f "$CONFIG" ]; then
 			warn "分流规则没能改成校验后更新，保持原样。可以 --reset-config 重新生成配置。"
 		fi
 	fi
+	# 视频作者个人条目的开关（v0.7.0 起）：旧配置里没有就补上，都是注释行、默认不启用，
+	# 之后 litebox personal on 直接能用，不必 --reset-config。个人代理沿用 lb_proxy 那条规则的分组
+	if ! grep -q '# LITEBOX_PERSONAL$' "$CONFIG"; then
+		awk '
+			function personal() {
+				print "  # 视频作者个人用的条目（他的网站、他用的机场的域名、VPS 和宽带 IP），默认不启用。启用：litebox personal on"
+				print "  # personal_direct: {type: file, behavior: classical, format: text, path: ./rules/personal_direct.list} # LITEBOX_PERSONAL"
+				print "  # personal_proxy: {type: file, behavior: classical, format: text, path: ./rules/personal_proxy.list} # LITEBOX_PERSONAL"
+				np++
+			}
+			function blanks() { for (; nb > 0; nb--) print "" }
+			/^rule-providers:/ { p = 1; print; next }
+			p && /^$/ { nb++; next }
+			p && /^[^ #]/ { personal(); p = 0 }
+			{ blanks() }
+			/^rules:/ { r = 1 }
+			r && /^  - RULE-SET,lb_proxy,/ { g = $0; sub(/^  - RULE-SET,lb_proxy,/, "", g); print "  # - RULE-SET,personal_proxy," g " # LITEBOX_PERSONAL"; nr++ }
+			{ print }
+			r && /^  - RULE-SET,lb_direct,DIRECT$/ { print "  # - RULE-SET,personal_direct,DIRECT # LITEBOX_PERSONAL"; nr++ }
+			END { if (p) personal(); blanks(); exit !(np == 1 && nr == 2) }' "$CONFIG" > "$CONFIG.new" &&
+			"$BIN_DIR/mihomo" -t -d "$HOME_DIR" -f "$CONFIG.new" >/dev/null 2>&1 &&
+			mv -f "$CONFIG.new" "$CONFIG" &&
+			info "配置里加上了视频作者个人条目的开关（默认不启用，litebox personal on 可启用）"
+		rm -f "$CONFIG.new"
+	fi
 else
 	tr -d '\r' < "$SCRIPT_DIR/files/config.yaml.tpl" | sed \
 		-e "s|__MIXED_PORT__|$MIXED_PORT|" \

@@ -395,7 +395,7 @@ YouTube、Netflix、Google、GitHub、Telegram、X（Twitter）、TikTok 的规�
 
 升级：执行 `litebox update`；或下载新版安装包，按第 2、3 步重新执行 `install.sh`。配置、订阅、面板密钥都会保留。
 
-升级时不会改动已有的 `config.yaml`。想用上新版模板里的改进（比如 QUIC 开关），执行 `litebox update --reset-config`：按新模板重新生成配置，订阅、端口、密钥保留，旧配置备份为 `config.yaml.old`。
+升级时保留已有的 `config.yaml`，只自动做两处不改变分流结果的修改：规则集改成「校验后更新」（v0.7.0 起，改之前备份为 `config.yaml.pre-0.7`），以及补上视频作者个人条目的开关（注释行，默认不启用）。想用上新版模板里的其他改进（比如 QUIC 开关、新的分组），执行 `litebox update --reset-config`：按新模板重新生成配置，订阅、端口、密钥保留，旧配置备份为 `config.yaml.old`。
 
 **看门狗（自动保护）**：默认每 5 分钟检查一次。内核反复崩溃、系统放弃重启它时，看门狗会先试着拉起；拉不起来就恢复原来的 DNS，让家里设备直连上网，不会全家断网。内核恢复后自动重新接管。它还会检查内存上限、补回被清掉的防火墙规则、记流量、补下载缺失的规则文件。
 

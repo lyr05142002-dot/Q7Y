@@ -18,7 +18,7 @@ TRAFFIC_RUN=/tmp/litebox-traffic.txt
 TRAFFIC_LAST=/tmp/litebox-traffic.last
 
 # 会和 LiteBox 抢流量、DNS 的代理插件（和 install.sh 里的列表一致）
-OTHER_SVCS="openclash nikki mihomo passwall passwall2 shadowsocksr ssr-plus vssr bypass sing-box openbox homeproxy"
+OTHER_SVCS="openclash nikki mihomo passwall passwall2 shadowsocksr ssr-plus vssr bypass sing-box homeproxy"
 LUCI_FILES="/www/luci-static/resources/view/litebox.js /usr/share/luci/menu.d/luci-app-litebox.json /usr/share/rpcd/acl.d/luci-app-litebox.json"
 
 PANEL_PORT=9090 MIXED_PORT=7890 SECRET="" MEM_SOFT_MB=100 MEM_HARD_MB=180 WATCHDOG_MIN=5

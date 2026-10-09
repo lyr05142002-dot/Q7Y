@@ -160,7 +160,7 @@ EOT
 # 已启用的其他代理插件：同时运行会抢流量和 DNS，装好后要停用（只停用，配置保留）。
 # 不信插件脚本自己的 running：有些固件里 passwall、shadowsocksr 没有进程也说「在运行」，
 # 误判会把本来就关着的插件记下来，切回时反而把它打开。只看开机自启、procd 实例和真实进程
-OTHER_SVCS="openclash nikki mihomo passwall passwall2 shadowsocksr ssr-plus vssr bypass sing-box openbox homeproxy"
+OTHER_SVCS="openclash nikki mihomo passwall passwall2 shadowsocksr ssr-plus vssr bypass sing-box homeproxy"
 svc_active() { # 插件名
 	"/etc/init.d/$1" enabled 2>/dev/null && return 0
 	ubus call service list "{\"name\":\"$1\"}" 2>/dev/null | jsonfilter -e "@[\"$1\"].instances.*.pid" >/dev/null 2>&1 && return 0
